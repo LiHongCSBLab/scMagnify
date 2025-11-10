@@ -1,0 +1,55 @@
+/*
+ * custom.css
+ *
+ * This file contains custom CSS rules for the Sphinx documentation.
+ * It includes fixes for:
+ * 1. Stretched images from Jupyter Notebook outputs.
+ * 2. Overly large font size in pandas DataFrames.
+ */
+
+/* ==========================================================================
+   1. Image Styling - Prevent Stretching
+   ========================================================================== */
+
+/*
+ * Apply these rules to images within Jupyter cell outputs and standard figures.
+ * - max-width: 100% ensures the image never overflows its container.
+ * - height: auto automatically adjusts the height to maintain the aspect ratio.
+ * - display: block can help remove extra spacing below the image.
+ * - margin: auto centers the image within its container if it's smaller.
+ */
+ div.output_area img,
+ .output img,
+ .figure img {
+     max-width: 100%;
+     height: auto;
+     display: block;
+     margin-left: auto;
+     margin-right: auto;
+ }
+ 
+
+ /* Target images inside cell outputs */
+.cell_output img {
+    max-width: 100% !important; /* Ensure the image does not overflow its container */
+    height: auto !important;   /* Maintain aspect ratio */
+    width: auto;              /* Allow the width to be determined by max-width */
+  }
+ 
+ /* ==========================================================================
+    2. DataFrame Font Size Adjustment
+    ========================================================================== */
+ 
+ /*
+  * Reduce the font size in data frames to make them more compact.
+  * See: https://github.com/scverse/cookiecutter-scverse/issues/193
+  */
+ div.cell_output table.dataframe {
+     font-size: 0.8em;
+ }
+
+ img.logo {
+    width: 150px;   
+    height: auto;     
+    max-width: 50%;  
+  }
