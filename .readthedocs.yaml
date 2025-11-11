@@ -1,16 +1,57 @@
-# https://docs.readthedocs.io/en/stable/config-file/v2.html
+# # https://docs.readthedocs.io/en/stable/config-file/v2.html
+# version: 2
+# build:
+#   os: ubuntu-20.04
+#   tools:
+#     python: "3.10"
+# sphinx:
+#   configuration: docs/conf.py
+#   # disable this for more lenient docs builds
+#   fail_on_warning: true
+# python:
+#   install:
+#     - method: pip
+#       path: .
+#       extra_requirements:
+#         - doc
+
+# .readthedocs.yaml
+#
+# 方案：只用 UV，不用 MOCKING
+# 目标：解决 'pip' 太慢导致的 15 分钟构建超时问题
+
 version: 2
+
 build:
-  os: ubuntu-20.04
+  os: "ubuntu-22.04"
   tools:
     python: "3.10"
+
+# (可选) 你的 Sphinx 配置路径
 sphinx:
-  configuration: docs/conf.py
-  # disable this for more lenient docs builds
-  fail_on_warning: true
+  configuration: "docs/conf.py"
+
+# --- 核心配置：用 UV 替换 PIP ---
+
 python:
-  install:
-    - method: pip
-      path: .
-      extra_requirements:
-        - doc
+  # 1. 禁用 RTD 默认的、缓慢的 'pip install'
+  install: []
+
+build:
+  jobs:
+    # 2. pre_install: 在环境中安装 uv 本身
+    pre_install:
+      - "pip install uv"
+      - "uv --version"
+
+    # 3. post_install: 使用 uv 来极速安装所有依赖
+    post_install:
+      # 'sync' 是最适合 CI/RTD 的命令。
+      # 它会读取 pyproject.toml，并安装 [dependencies]
+      # 和所有 [optional-dependencies] (因为 --all-extras)
+      # 这是并行化的，速度极快。
+      # "uv pip sync --all-extras --no-cache"
+
+      # --- 备选命令 (如果 sync 失败) ---
+      # 你也可以用 'install'，这更像 pip
+      "uv pip install --upgrade --no-cache .[doc]"
