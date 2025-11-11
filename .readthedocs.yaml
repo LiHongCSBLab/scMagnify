@@ -36,6 +36,7 @@ build:
     post_install:
       # 'uv pip install --upgrade --no-cache .[doc]' is an alternative to `uv pip sync`
       - "uv pip install --upgrade --no-cache .[doc]"
+      - "import scmagnify"
       # 如果你更想尝试 sync（从 pyproject.toml 安装所有依赖与 extras），可以替换为：
       # - "uv pip sync --all-extras --no-cache"
 
