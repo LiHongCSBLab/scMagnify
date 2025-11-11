@@ -1,4 +1,5 @@
-# scMagnify
+![scMagnify](/docs/_static/img/scMagnify_logo_removebg.png)
+# scMagnify: Multi scAle Gene regulatory Network InFerence and analYsis
 
 [![Tests][badge-tests]][tests]
 [![Documentation][badge-docs]][documentation]
@@ -8,8 +9,7 @@
 
 scMagnify is a computational framework to infer GRNs and explore dynamic regulation synergy from single-cell multiome data.
 
-
-![Overview of scMagnify](_static/img/Figure1.png)
+![Overview of scMagnify](/docs/_static/img/Figure1.png)
 
 ## 🔑scMagnify’s key applications
 
@@ -18,53 +18,6 @@ scMagnify is a computational framework to infer GRNs and explore dynamic regulat
 
 Please refer to the [documentation][],
 in particular, the [API documentation][].
-
-::::{grid} 3
-   :gutter: 1
-   :class-container: sd-text-center
-
-:::{grid-item-card} Cell State Transition <br> Analysis
-   :link: notebooks/100_cell_state_analysis.html
-   :padding: 0
-   :shadow: sm
-
-![State](_static/img/1_cell_state_trans.png)
-:::
-
-:::{grid-item-card} TF Binding Network Construction
-   :link: notebooks/200_tf_binding_network_construct.html
-   :padding: 0
-   :shadow: sm
-
-![GRN](_static/img/2_tf_binding_network.png)
-:::
-
-:::{grid-item-card} Multi-scale Regulation Inference
-   :link: notebooks/300_regulation_inference.html
-   :padding: 0
-   :shadow: sm
-
-![Inference](_static/img/3_grn_inference.png)
-:::
-
-:::{grid-item-card} RegFactor Decomposition
-   :link: notebooks/400_regfactor_decomposition.html
-   :padding: 0
-   :shadow: sm
-
-![Decomposition](_static/img/4_regfactor_decomp.png)
-:::
-
-:::{grid-item-card} Intracellular Communication
-   :link: notebooks/500_intracellular_cci.html
-   :padding: 0
-   :shadow: sm
-
-![Decomposition](_static/img/5_intracellular.png)
-:::
-::::
-
-## ⚙️Advanced Usages
 
 ## 📦Installation
 
