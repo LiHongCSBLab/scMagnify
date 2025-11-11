@@ -69,6 +69,7 @@ optional-dependencies.doc = [
   "sphinx-tabs",
   "sphinxcontrib-bibtex>=1",
   "sphinxext-opengraph",
+  "sphinx_design"
 ]
 
 optional-dependencies.test = [
