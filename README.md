@@ -1,4 +1,5 @@
 ![scMagnify](/docs/_static/img/scMagnify_logo_removebg.png)
+
 # scMagnify: Multi scAle Gene regulatory Network InFerence and analYsis
 
 [![Tests][badge-tests]][tests]
@@ -13,6 +14,7 @@ scMagnify is a computational framework to infer GRNs and explore dynamic regulat
 
 ## 🔑scMagnify’s key applications
 
+1. t.b.a
 
 ## 🚀Getting started
 
