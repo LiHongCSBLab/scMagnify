@@ -6,7 +6,6 @@
 
 # -- Path setup --------------------------------------------------------------
 import sys
-from datetime import datetime
 from importlib.metadata import metadata
 from pathlib import Path
 
@@ -18,16 +17,21 @@ sys.path.insert(0, str(HERE / "extensions"))
 
 # NOTE: If you installed your project in editable mode, this might be stale.
 #       If this is the case, reinstall it to refresh the metadata
-info = metadata("scMagnify")
-project_name = info["Name"]
-author = info["Author"]
-copyright = f"{datetime.now():%Y}, {author}."
-version = info["Version"]
-urls = dict(pu.split(", ") for pu in info.get_all("Project-URL"))
-repository_url = urls["Source"]
+try:
+    info = metadata("scmagnify")
+    project_name = info.get("Name", "scMagnify")
+    author = info.get("Author", "scMagnify authors")
+    version = info.get("Version", "0.0.0")
+    urls = dict(pu.split(", ") for pu in (info.get_all("Project-URL") or []))
+    repository_url = urls.get("Source", "https://github.com/xfchen0912/scMagnify")
+except Exception:
+    project_name = "scMagnify"
+    author = "scMagnify authors"
+    version = "0.0.0"
+    repository_url = "https://github.com/xfchen0912/scMagnify"
 
 # The full version, including alpha/beta/rc tags
-release = info["Version"]
+release = version
 
 bibtex_bibfiles = ["references.bib"]
 templates_path = ["_templates"]
@@ -68,7 +72,7 @@ extensions = [
 autosummary_generate = True
 autodoc_member_order = "alphabetical"
 autodoc_typehints = "description"
-autodoc_mock_imports = ["moscot"]
+autodoc_mock_imports = ["moscot", "cellrank", "decoupler"]
 # autodoc_member_order = "groupwise"
 default_role = "literal"
 napoleon_google_docstring = False
