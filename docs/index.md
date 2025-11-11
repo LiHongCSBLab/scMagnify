@@ -22,9 +22,9 @@ reproducibility.md
 ```-->
 
 
-```{include} ../README.md
+```{include} ./README.md
 
-``` 
+```
 
 ## Important resources
 

@@ -43,5 +43,3 @@ Methods
 .. automethod:: FuncEnrich.get_overlap_genes
 
 .. automethod:: FuncEnrich.run_ora
-
-

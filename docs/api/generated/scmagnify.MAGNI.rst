@@ -46,5 +46,3 @@ Methods
 .. automethod:: MAGNI.save
 
 .. automethod:: MAGNI.train
-
-

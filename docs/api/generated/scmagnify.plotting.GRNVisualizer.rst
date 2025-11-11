@@ -49,5 +49,3 @@ Methods
 .. automethod:: GRNVisualizer.plot
 
 .. automethod:: GRNVisualizer.prepare_network
-
-

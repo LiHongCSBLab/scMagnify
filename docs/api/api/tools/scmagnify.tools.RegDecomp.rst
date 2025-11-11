@@ -61,5 +61,3 @@ Methods
 .. automethod:: RegDecomp.rename_regfactors
 
 .. automethod:: RegDecomp.tucker_decomposition
-
-

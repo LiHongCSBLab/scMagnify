@@ -67,7 +67,7 @@ import scmagnify as scm
     plotting.distplot
     plotting.GRNVisualizer
     plotting.GenomeViewer
-    
+
 ```
 
 ## Settings

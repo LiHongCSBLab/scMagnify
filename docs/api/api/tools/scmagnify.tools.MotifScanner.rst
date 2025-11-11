@@ -46,5 +46,3 @@ Methods
 .. automethod:: MotifScanner.match
 
 .. automethod:: MotifScanner.show_motif_databases
-
-

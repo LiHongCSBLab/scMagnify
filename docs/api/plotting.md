@@ -16,5 +16,5 @@
     plotting.distplot
     plotting.GRNVisualizer
     plotting.GenomeViewer
-    
+
 ```

@@ -37,5 +37,3 @@ Methods
 .. automethod:: GenomeViewer.add_motifs
 
 .. automethod:: GenomeViewer.plot
-
-

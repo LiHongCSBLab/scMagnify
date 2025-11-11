@@ -55,7 +55,7 @@ extensions = [
     "sphinx.ext.napoleon",
     "sphinxcontrib.bibtex",
     "sphinx_autodoc_typehints",
-    'sphinx_inline_svg',
+    "sphinx_inline_svg",
     # "sphinx_tabs.tabs",
     "sphinx.ext.mathjax",
     "IPython.sphinxext.ipython_console_highlighting",
@@ -84,7 +84,7 @@ myst_enable_extensions = [
     "dollarmath",
     "html_image",
     "html_admonition",
-    "attrs_inline",  
+    "attrs_inline",
 ]
 myst_fence_as_directive = ["mermaid"]
 myst_url_schemes = ("http", "https", "mailto")
@@ -95,7 +95,7 @@ typehints_defaults = "braces"
 
 # inline svg
 inline_svg_resolve_xref = True
-inline_svg_classes = ['inline-svg', 'selectable-svg']
+inline_svg_classes = ["inline-svg", "selectable-svg"]
 
 source_suffix = {
     ".rst": "restructuredtext",
@@ -113,7 +113,6 @@ intersphinx_mapping = {
     "torch": ("https://docs.pytorch.org/docs/main/", None),
     # "matplotlib": ("https://matplotlib.org/", None),
     # "pycirclize": ("https://moshi4.github.io/pyCirclize/", None),
-
 }
 
 # List of patterns, relative to source directory, that match files and

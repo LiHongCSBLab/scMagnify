@@ -193,5 +193,3 @@ Methods
 .. automethod:: MSNGC.xpu
 
 .. automethod:: MSNGC.zero_grad
-
-
