@@ -59,7 +59,7 @@ extensions = [
     "sphinx.ext.napoleon",
     "sphinxcontrib.bibtex",
     "sphinx_autodoc_typehints",
-    "sphinx_inline_svg",
+    # "sphinx_inline_svg",
     # "sphinx_tabs.tabs",
     "sphinx.ext.mathjax",
     "IPython.sphinxext.ipython_console_highlighting",
@@ -98,8 +98,8 @@ nb_merge_streams = True
 typehints_defaults = "braces"
 
 # inline svg
-inline_svg_resolve_xref = True
-inline_svg_classes = ["inline-svg", "selectable-svg"]
+# inline_svg_resolve_xref = True
+# inline_svg_classes = ["inline-svg", "selectable-svg"]
 
 source_suffix = {
     ".rst": "restructuredtext",
