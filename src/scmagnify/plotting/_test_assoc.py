@@ -2,45 +2,46 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import matplotlib as mpl
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 import seaborn as sns
-import matplotlib as mpl
 from adjustText import adjust_text
 
-import scmagnify as scm
-from scmagnify.plotting._utils import savefig_or_show, _setup_rc_params, _format_title
-from scmagnify.utils import _validate_varm_key, _get_data_modal, _get_X
-from scmagnify.settings import settings
 from scmagnify import logging as logg
+from scmagnify.plotting._utils import _setup_rc_params, savefig_or_show
+from scmagnify.settings import settings
+from scmagnify.utils import _get_data_modal, _get_X, _validate_varm_key
 
 if TYPE_CHECKING:
-    from typing import Literal, Union, Optional, List
+    from typing import Literal
+
     from anndata import AnnData
     from mudata import MuData
 
 __all__ = ["test_association"]
 
+
 def test_association(
-    data: Union[AnnData, MuData],
+    data: AnnData | MuData,
     modal: Literal["ATAC", "RNA"] = "RNA",
-    layer: Optional[str] = None,
+    layer: str | None = None,
     res_key: str = "test_assoc_res",
     fdr_cutoff: float = 1e-3,
     A_cutoff: float = 0.5,
-    tf_list: Optional[List[str]] = None,
-    selected_genes: Optional[List[str]] = None,
-    scatter_kws: Optional[dict] = None,
-    pie_kws: Optional[dict] = None,
-    colorbar_kws: Optional[dict] = None,
-    context: Optional[str] = None,
-    default_context: Optional[dict] = None,
-    theme: Optional[str] = "white",
-    font_scale: Optional[float] = 1,
-    save: Optional[bool] = None,
-    show: Optional[bool] = None
-) -> Optional[plt.Figure]:
+    tf_list: list[str] | None = None,
+    selected_genes: list[str] | None = None,
+    scatter_kws: dict | None = None,
+    pie_kws: dict | None = None,
+    colorbar_kws: dict | None = None,
+    context: str | None = None,
+    default_context: dict | None = None,
+    theme: str | None = "white",
+    font_scale: float | None = 1,
+    save: bool | None = None,
+    show: bool | None = None,
+) -> plt.Figure | None:
     """
     Visualize association test results with scatter plots, pie charts, and optional gene annotations.
 
@@ -96,7 +97,7 @@ def test_association(
             "colors": [plt.colormaps["tab10"].colors[3], plt.colormaps["tab10"].colors[7]],
             "tf_colors": [plt.colormaps["tab20c"].colors[4], plt.colormaps["tab20c"].colors[5]],
             "wedgeprops": {"width": 0.3, "edgecolor": "w"},
-            "textprops": {"fontsize": 10 * font_scale}
+            "textprops": {"fontsize": 10 * font_scale},
         }
         default_colorbar_kws = {"label": "Mean Expression", "orientation": "vertical"}
 
@@ -144,7 +145,7 @@ def test_association(
             alpha=default_scatter_kws["alpha"],
             linewidth=default_scatter_kws["linewidth"],
             zorder=0,
-            rasterized=default_scatter_kws["rasterized"]
+            rasterized=default_scatter_kws["rasterized"],
         )
 
         # Plot non-significant genes
@@ -157,7 +158,7 @@ def test_association(
             alpha=0.8,
             linewidth=0,
             zorder=1,
-            rasterized=default_scatter_kws["rasterized"]
+            rasterized=default_scatter_kws["rasterized"],
         )
 
         # Add gene annotations
@@ -179,11 +180,13 @@ def test_association(
                         label_x = x_value + 0.05 * (df["A"].max() - df["A"].min())
                         label_y = y_value + 0.05 * (y_max + 5 - df["-log10(fdr)"].min())
                         text = ax.text(
-                            label_x, label_y, gene,
+                            label_x,
+                            label_y,
+                            gene,
                             fontsize=8 * font_scale,
                             color="black",
                             fontstyle="italic",
-                            bbox={"facecolor": "white", "edgecolor": "black", "boxstyle": "round,pad=0.5", "alpha": 1}
+                            bbox={"facecolor": "white", "edgecolor": "black", "boxstyle": "round,pad=0.5", "alpha": 1},
                         )
                         texts.append(text)
                         ax.plot([x_value, label_x], [y_value, label_y], color="black", linestyle="--", linewidth=1)
@@ -230,7 +233,7 @@ def test_association(
             colors=default_pie_kws["colors"],
             startangle=90,
             wedgeprops=default_pie_kws["wedgeprops"],
-            textprops=default_pie_kws["textprops"]
+            textprops=default_pie_kws["textprops"],
         )
         pie_ax.pie(
             [n_sig_tf, n_sig_nontf],
@@ -238,11 +241,10 @@ def test_association(
             radius=0.7,
             startangle=90,
             wedgeprops=default_pie_kws["wedgeprops"],
-            textprops=default_pie_kws["textprops"]
+            textprops=default_pie_kws["textprops"],
         )
         pie_ax.set_title(
-            f"Significant Genes: {n_sig}\n({n_sig_tf} TFs, {n_sig_nontf} Non-TFs)",
-            fontsize=10 * font_scale
+            f"Significant Genes: {n_sig}\n({n_sig_tf} TFs, {n_sig_nontf} Non-TFs)", fontsize=10 * font_scale
         )
 
         # Save or show

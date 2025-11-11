@@ -2,19 +2,16 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from typing import TYPE_CHECKING
 
 import numpy as np
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
-from scmagnify import logging as logg
-
 if TYPE_CHECKING:
-    from typing import Literal, Union
-    from anndata import AnnData
-    from mudata import MuData
+    pass
+
 
 class MSNGC(nn.Module):
     """
@@ -40,10 +37,10 @@ class MSNGC(nn.Module):
         self,
         n_reg: int,
         n_target: int,
-        chrom_constraint: Optional[np.ndarray] = None,
-        hidden: List[int] = [32],
+        chrom_constraint: np.ndarray | None = None,
+        hidden: list[int] = [32],
         lag: int = 5,
-        device: str = 'cuda'
+        device: str = "cuda",
     ):
         super().__init__()
         self.n_reg = n_reg
@@ -65,16 +62,10 @@ class MSNGC(nn.Module):
 
         # Instantiate coefficient networks
         for l in range(lag):
-            modules = [nn.Sequential(
-                nn.Linear(n_reg, hidden[0]),
-                nn.ReLU()
-            )]
+            modules = [nn.Sequential(nn.Linear(n_reg, hidden[0]), nn.ReLU())]
             if len(hidden) > 1:
                 for i in range(len(hidden) - 1):
-                    modules.append(nn.Sequential(
-                        nn.Linear(hidden[i], hidden[i + 1]),
-                        nn.ReLU()
-                    ))
+                    modules.append(nn.Sequential(nn.Linear(hidden[i], hidden[i + 1]), nn.ReLU()))
             modules.append(nn.Linear(hidden[-1], n_reg * n_target))
             self.coeff_nets.append(nn.Sequential(*modules))
 
@@ -88,7 +79,7 @@ class MSNGC(nn.Module):
                     nn.init.xavier_normal_(m.weight.data)
                     m.bias.data.fill_(0.1)
 
-    def forward(self, X: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, X: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Forward pass of the model.
 
@@ -128,7 +119,7 @@ class MSNGC(nn.Module):
             Y_pred += self.attention.weight[0, l] * torch.sum(
                 torch.matmul(coeffs_l, X[:, l:, :].unsqueeze(dim=3)).squeeze(3), dim=1
             )
-        
+
         attention_weights = self.attention.weight
 
         return coeffs, Y_pred, attention_weights

@@ -2,19 +2,18 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import pandas as pd
 import matplotlib.pyplot as plt
+import pandas as pd
 import seaborn as sns
 from matplotlib.gridspec import GridSpec
 
 import scmagnify as scm
-from ._utils import savefig_or_show
-from scmagnify.utils import _get_data_modal, d, inject_docs
 from scmagnify import GRNMuData
-from scmagnify import logging as logg
+from scmagnify.utils import _get_data_modal, d
+
+from ._utils import savefig_or_show
 
 if TYPE_CHECKING:
-    from typing import Union
     from anndata import AnnData
     from mudata import MuData
 
@@ -23,7 +22,7 @@ __all__ = ["cell_state_select"]
 
 @d.dedent
 def cell_state_select(
-    data: Union[AnnData, MuData, GRNMuData],
+    data: AnnData | MuData | GRNMuData,
     modal: str = "RNA",
     color: str = "celltype",
     basis: str = "X_umap",
@@ -56,11 +55,9 @@ def cell_state_select(
     -------
     None
     """
-    
     adata = _get_data_modal(data, modal)
-    ct_colors = pd.Series(adata.uns[f"{color}_colors"], 
-                      index=adata.obs[color].values.categories)
-    
+    ct_colors = pd.Series(adata.uns[f"{color}_colors"], index=adata.obs[color].values.categories)
+
     if mask_key not in adata.obsm.keys():
         raise KeyError(f"Key '{mask_key}' not found in `adata.obsm`.")
 
@@ -75,55 +72,49 @@ def cell_state_select(
         nrows=len(lineages),  # Number of rows equals the number of lineages
         ncols=3,  # Three columns
         width_ratios=[1, 2, 0.2],  # Column width ratios: UMAP (1), scatter plot (2), spacing (0.2)
-        wspace=0.4  # Horizontal spacing between subplots
+        wspace=0.4,  # Horizontal spacing between subplots
     )
 
     # Iterate over each lineage
     for i, lin in enumerate(lineages):
-        
         # Get cell state masks and fate probabilities for the current lineage
         cells = adata.obsm[mask_key][lin]
         fate = adata.obsm[prob_key][lin]
-        
+
         # --------------------------
         # Plot UMAP embedding
         # --------------------------
         ax_umap = fig.add_subplot(gs[i, 0])  # First column for UMAP
         ax_umap = scm.pl.scatter(
-            adata, 
-            basis=basis, 
-            color=color, 
+            adata,
+            basis=basis,
+            color=color,
             title=f"{lin}",
-            add_outline=cells, 
+            add_outline=cells,
             outline_width=(0.5, 1),
-            ax=ax_umap, 
+            ax=ax_umap,
             show=False,
-            legend_loc=False, 
-            frameon=False
+            legend_loc=False,
+            frameon=False,
         )
-        
+
         # --------------------------
         # Plot scatter plot
         # --------------------------
         ax_scatter = fig.add_subplot(gs[i, 1])  # Second column for scatter plot
-        ax_scatter.scatter(
-            adata.obs[time_key][cells], 
-            fate[cells],
-            color=ct_colors[adata.obs[color][cells]],
-            s=20
-        )
-        
-        # Remove top and right spines
-        ax_scatter.spines['top'].set_visible(False)
-        ax_scatter.spines['right'].set_visible(False)
-        
-        # Set scatter plot axis labels
-        ax_scatter.set_xlabel('Pseudotime', fontsize=16)
-        ax_scatter.set_ylabel('Fate Probabilities', fontsize=16)
-    
-    # Set global title
-    fig.suptitle('Cell State Selection Results', fontsize=20)
+        ax_scatter.scatter(adata.obs[time_key][cells], fate[cells], color=ct_colors[adata.obs[color][cells]], s=20)
 
-    savefig_or_show("cell_state_select", save=save, show=show)  
+        # Remove top and right spines
+        ax_scatter.spines["top"].set_visible(False)
+        ax_scatter.spines["right"].set_visible(False)
+
+        # Set scatter plot axis labels
+        ax_scatter.set_xlabel("Pseudotime", fontsize=16)
+        ax_scatter.set_ylabel("Fate Probabilities", fontsize=16)
+
+    # Set global title
+    fig.suptitle("Cell State Selection Results", fontsize=20)
+
+    savefig_or_show("cell_state_select", save=save, show=show)
     if show is False:
         return fig

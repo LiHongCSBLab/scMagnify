@@ -1,37 +1,42 @@
+import base64
 import re
 import sys
 import urllib.request
 from collections import OrderedDict
-from typing import Dict, Optional
 from importlib.resources import files
-import base64
 
 from scmagnify.settings import settings
 
 __all__ = ["info"]
+
 
 def supports_html() -> bool:
     """Test whether current runtime supports HTML output (e.g., Jupyter notebook)."""
     if "IPython" not in sys.modules or "IPython.display" not in sys.modules:
         return False
     from IPython.display import display
+
     class DisplayInspector:
         def __init__(self) -> None:
             self.status = None
+
         def _repr_html_(self) -> str:
             self.status = "HTML"
             return ""
+
         def __repr__(self) -> str:
             self.status = "Plain"
             return ""
+
     inspector = DisplayInspector()
     display(inspector)
     return inspector.status == "HTML"
 
+
 def get_latest_version(
     url="https://raw.githubusercontent.com/your-username/your-repo/main/pyproject.toml",
     timeout=5,
-) -> Optional[str]:
+) -> str | None:
     """Fetch the latest package version from a remote pyproject.toml file."""
     try:
         response = urllib.request.urlopen(url, timeout=timeout)
@@ -43,11 +48,12 @@ def get_latest_version(
     except Exception:
         return None
 
-def _get_info() -> Dict[str, Dict]:
+
+def _get_info() -> dict[str, dict]:
     """Collect package information, including version and dependencies."""
     from scmagnify import __version__  # Package name
 
-    info: Dict[str, Dict] = OrderedDict()
+    info: dict[str, dict] = OrderedDict()
 
     # Version information
     latest = get_latest_version()
@@ -69,30 +75,35 @@ def _get_info() -> Dict[str, Dict]:
     }
     try:
         import scanpy
+
         info["dependencies"]["message"] += f"scanpy v{scanpy.__version__}, "
         info["dependencies"]["value"].append(("scanpy", scanpy.__version__))
     except ImportError:
         pass
     try:
         import mudata
+
         info["dependencies"]["message"] += f"mudata v{mudata.__version__}, "
         info["dependencies"]["value"].append(("mudata", mudata.__version__))
     except ImportError:
         pass
     try:
         import cellrank
+
         info["dependencies"]["message"] += f"cellrank v{cellrank.__version__}, "
         info["dependencies"]["value"].append(("cellrank", cellrank.__version__))
     except ImportError:
         pass
     try:
         import decoupler
+
         info["dependencies"]["message"] += f"decoupler v{decoupler.__version__}, "
         info["dependencies"]["value"].append(("decoupler", decoupler.__version__))
     except ImportError:
         pass
     try:
         import SEACells
+
         info["dependencies"]["message"] += f"SEACells v{SEACells.__version__}, "
         info["dependencies"]["value"].append(("SEACells", SEACells.__version__))
     except ImportError:
@@ -109,6 +120,7 @@ def _get_info() -> Dict[str, Dict]:
 
     try:
         import torch
+
         info["pytorch_version"]["message"] = f"v{torch.__version__}"
         info["pytorch_version"]["value"] = torch.__version__
     except ImportError:
@@ -150,23 +162,23 @@ def _get_info() -> Dict[str, Dict]:
         "message": "https://github.com/your-username/your-repo",
         "value": "https://github.com/your-username/your-repo",
     }
-    
+
     return info
+
 
 def info():
     """Display package information, with HTML output in Jupyter or plain text in terminal.
-    
+
     References
     ----------
     [1] The `corneto` library, specifically the `info` utility function.
         Source: https://github.com/saezlab/corneto/blob/bb12cc977896be2d3a6b0d196605ebaa7b0f2d46/corneto/_util.py
-    
+
     """
-    
     info = _get_info()
 
     if supports_html():
-        from IPython.display import display, HTML
+        from IPython.display import HTML, display
 
         # Load logo
         logo_path = files("scmagnify").joinpath("data/logo_min.png")

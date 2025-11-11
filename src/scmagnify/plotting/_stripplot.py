@@ -2,45 +2,43 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import numpy as np
-import pandas as pd
-import seaborn as sns
-import matplotlib.pyplot as plt
-from adjustText import adjust_text
 import matplotlib as mpl
+import matplotlib.pyplot as plt
+import seaborn as sns
 
-from scmagnify.settings import settings
-from scmagnify import logging as logg
-from scmagnify.plotting._utils import savefig_or_show, _setup_rc_params, _format_title
-from scmagnify.utils import _get_data_modal, _validate_varm_key, d, inject_docs
+from scmagnify.plotting._utils import _format_title, _setup_rc_params, savefig_or_show
+from scmagnify.utils import _get_data_modal, _validate_varm_key, d
 
 if TYPE_CHECKING:
-    from typing import Literal, Union, Optional, List
+    from typing import Literal
+
     from anndata import AnnData
     from mudata import MuData
+
     from scmagnify import GRNMuData
 
 __all__ = ["stripplot"]
 
+
 @d.dedent
 def stripplot(
-    data: Union[AnnData, MuData, GRNMuData],
+    data: AnnData | MuData | GRNMuData,
     modal: Literal["GRN", "RNA", "ATAC"] = "GRN",
     key: str = "network_score",
     sortby: str = "degree_centrality",
     n_top: int = 30,
     cmap: str = "Reds",
-    selected_genes: Optional[List[str]] = None,
-    values: Optional[List[str]] = None,
+    selected_genes: list[str] | None = None,
+    values: list[str] | None = None,
     hue: str = "mean_activity",
     colorbar: bool = True,
-    wspace: Optional[float] = 0.4,
-    context: Optional[str] = None,
-    default_context: Optional[dict] = None,
-    theme: Optional[str] = "darkgrid",
-    font_scale: Optional[float] = 1,
-    show: Optional[bool] = None,
-    save: Optional[str] = None,
+    wspace: float | None = 0.4,
+    context: str | None = None,
+    default_context: dict | None = None,
+    theme: str | None = "darkgrid",
+    font_scale: float | None = 1,
+    show: bool | None = None,
+    save: str | None = None,
     **kwargs,
 ):
     """
@@ -72,7 +70,7 @@ def stripplot(
     %(save)s
     **kwargs
         Additional keyword arguments passed to `seaborn.stripplot`.
-    
+
     Returns
     -------
     None
@@ -132,7 +130,7 @@ def stripplot(
         )
 
         # Set titles and customize axes
-        for ax, title in zip(g.axes.flat, values):
+        for ax, title in zip(g.axes.flat, values, strict=False):
             data = top_genes[title]
             ax.set(title=_format_title(title))
             margin = (data.max() - data.min()) * 0.1
@@ -186,7 +184,7 @@ def stripplot(
         # Adjust the width space between subplots
         g.figure.subplots_adjust(wspace=wspace)
 
-        if not hasattr(g, 'axes'):
+        if not hasattr(g, "axes"):
             raise RuntimeError("Failed to create PairGrid axes. Please check your input parameters.")
 
         if not g.axes.size:

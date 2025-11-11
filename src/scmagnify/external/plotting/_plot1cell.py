@@ -1,48 +1,43 @@
 # CODE BLOCK
 from __future__ import annotations
 
-from typing import Iterable, Mapping, Optional, Sequence, Tuple, Union
+from collections.abc import Mapping, Sequence
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 from matplotlib.colors import Colormap, to_hex
-from matplotlib.patches import Patch
 
-from scmagnify.plotting._utils import groups_to_bool, plot_outline, is_list_of_int, is_int
+from scmagnify.plotting._utils import groups_to_bool, is_int, is_list_of_int, plot_outline
 
 try:
     from pycirclize import Circos
-except Exception as e:  # pragma: no cover
+except ImportError:  # pragma: no cover
     Circos = None  # type: ignore
 
 try:
     from anndata import AnnData
-except Exception:  # pragma: no cover
+except ImportError:  # pragma: no cover
     AnnData = object  # type: ignore
 
 
 # --- Helper functions (mostly unchanged) ---
-def _get_cluster_order_and_sizes(
-    adata: AnnData, cluster_key: str
-) -> Tuple[Sequence[str], Mapping[str, int]]:
+def _get_cluster_order_and_sizes(adata: AnnData, cluster_key: str) -> tuple[Sequence[str], Mapping[str, int]]:
     vc = adata.obs[cluster_key].astype(str).value_counts()
     order = list(vc.index)
     sizes = vc.to_dict()
     return order, sizes
 
 
-def _get_cluster_colors(
-    adata: AnnData, cluster_key: str, clusters: Sequence[str]
-) -> Mapping[str, str]:
+def _get_cluster_colors(adata: AnnData, cluster_key: str, clusters: Sequence[str]) -> Mapping[str, str]:
     key = f"{cluster_key}_colors"
     if getattr(adata, "uns", None) is not None and key in adata.uns and f"{cluster_key}_colors" in adata.uns:
         # Check if cluster names match the categories in .obs
-        cats_obs = adata.obs[cluster_key].astype('category').cat.categories
+        cats_obs = adata.obs[cluster_key].astype("category").cat.categories
         if set(cats_obs) == set(clusters):
-             # Use the order from .obs.cat.categories
+            # Use the order from .obs.cat.categories
             cats_from_uns = adata.uns[cluster_key + "_colors"]
-            cmap = {cat: color for cat, color in zip(cats_obs, cats_from_uns)}
+            cmap = {cat: color for cat, color in zip(cats_obs, cats_from_uns, strict=False)}
             return cmap
 
     # Fallback method
@@ -52,26 +47,26 @@ def _get_cluster_colors(
 
 
 def _gene_cluster_means(
-    adata: AnnData, cluster_key: str, genes: Sequence[str], layer: Optional[str] = None
+    adata: AnnData, cluster_key: str, genes: Sequence[str], layer: str | None = None
 ) -> pd.DataFrame:
     # Use scanpy's built-in functionality if available, otherwise fallback
     if hasattr(adata, "raw") and adata.raw is not None and layer is None:
         adata_source = adata.raw.to_adata()
     else:
         adata_source = adata
-    
+
     genes = [g for g in genes if g in adata_source.var_names]
     if not genes:
         return pd.DataFrame()
 
     # Get cluster categories in the correct order
-    cluster_cats = adata.obs[cluster_key].astype('category').cat.categories
+    cluster_cats = adata.obs[cluster_key].astype("category").cat.categories
     df = pd.DataFrame(index=genes, columns=cluster_cats, dtype=float)
 
     # Use pandas groupby for efficient calculation
     for cluster, group_idx in adata_source.obs.groupby(cluster_key).groups.items():
         if layer is None:
-            mean_expr = adata_source[group_idx, genes].X.mean(axis=0).A1 # .A1 converts matrix to flat array
+            mean_expr = adata_source[group_idx, genes].X.mean(axis=0).A1  # .A1 converts matrix to flat array
         else:
             mean_expr = adata_source[group_idx, genes].layers[layer].mean(axis=0).A1
         df.loc[genes, cluster] = mean_expr
@@ -85,17 +80,15 @@ def _minmax(df: pd.DataFrame) -> pd.DataFrame:
     mn = df.min(axis=1)
     mx = df.max(axis=1)
     range_ = mx - mn
-    range_[range_ == 0] = 1.0 # Avoid division by zero
+    range_[range_ == 0] = 1.0  # Avoid division by zero
     scaled = df.subtract(mn, axis=0).divide(range_, axis=0)
     return scaled.fillna(0.0).clip(0, 1)
 
 
-def _metadata_proportions(
-    adata: AnnData, cluster_key: str, meta_key: str
-) -> Tuple[pd.DataFrame, Sequence[str]]:
+def _metadata_proportions(adata: AnnData, cluster_key: str, meta_key: str) -> tuple[pd.DataFrame, Sequence[str]]:
     ct = pd.crosstab(adata.obs[meta_key].astype(str), adata.obs[cluster_key].astype(str))
     # Reorder columns to match cluster order
-    cluster_order = adata.obs[cluster_key].astype('category').cat.categories
+    cluster_order = adata.obs[cluster_key].astype("category").cat.categories
     ct = ct.reindex(columns=cluster_order)
     props = ct.div(ct.sum(axis=0), axis=1).fillna(0.0)
     return props, list(props.index)
@@ -105,19 +98,19 @@ def plot1cell(
     adata: AnnData,
     cluster_key: str = "leiden",
     basis: str = "umap",
-    genes_to_plot: Optional[Sequence[str]] = None,
-    metadata_to_plot: Optional[Sequence[str]] = None,
-    layer: Optional[str] = None,
-    links: Optional[pd.DataFrame] = None,
+    genes_to_plot: Sequence[str] | None = None,
+    metadata_to_plot: Sequence[str] | None = None,
+    layer: str | None = None,
+    links: pd.DataFrame | None = None,
     sector_space: float = 5.0,
     center_axes_rect: Sequence[float] = (0.35, 0.35, 0.3, 0.3),
-    gene_cmap: Union[str, Colormap] = "viridis",
-    figsize: Tuple[float, float] = (10, 10),
-    title: Optional[str] = None,
+    gene_cmap: str | Colormap = "viridis",
+    figsize: tuple[float, float] = (10, 10),
+    title: str | None = None,
     link_alpha: float = 0.4,
-    add_outline: Optional[Union[bool, int, Sequence[int], pd.Series, str]] = None,
-    outline_width: Optional[Tuple[float, float]] = None,
-    outline_color: Optional[Tuple[str, str]] = None,
+    add_outline: bool | int | Sequence[int] | pd.Series | str | None = None,
+    outline_width: tuple[float, float] | None = None,
+    outline_color: tuple[str, str] | None = None,
     center_size: float = 12.0,
     center_alpha: float = 1.0,
     show: bool = True,
@@ -172,13 +165,19 @@ def plot1cell(
     for sector in circos.sectors:
         track = sector.add_track((label_r0, label_r1))
         track.rect(0, sector.size, fc=cluster_colors.get(sector.name, "#cccccc"), ec="lightgray", lw=1)
-        
+
         import matplotlib.patheffects as path_effects
+
         text_patheffects = [path_effects.withStroke(linewidth=2, foreground="white")]
-        
+
         track.text(
-            f"{sector.name}", r=label_r1 - 3, adjust_rotation=True,
-            ha="center", va="center", size=10, path_effects=text_patheffects
+            f"{sector.name}",
+            r=label_r1 - 3,
+            adjust_rotation=True,
+            ha="center",
+            va="center",
+            size=10,
+            path_effects=text_patheffects,
         )
     current_r1 = label_r0
 
@@ -194,7 +193,7 @@ def plot1cell(
                 track.rect(0, sector.size, fc=cmap(val), ec=None)
                 if i == 0:
                     # FIX: Use x=0 (a valid coordinate) and ha='right' to place the label outside.
-                    track.text(g, r=(r0 + r1) / 2 , x=0, size=7, ha="right", va="center")
+                    track.text(g, r=(r0 + r1) / 2, x=0, size=7, ha="right", va="center")
             current_r1 = r0
 
     if metadata_to_plot:
@@ -209,7 +208,8 @@ def plot1cell(
                 start_ang = 0.0
                 for c in cats:
                     p = float(props.loc[c].get(sector.name, 0.0))
-                    if p <= 0: continue
+                    if p <= 0:
+                        continue
                     end_ang = start_ang + p * sector.size
                     track.rect(start_ang, end_ang, fc=cat_colors[c], ec="lightgray", lw=1)
                     start_ang = end_ang
@@ -233,7 +233,11 @@ def plot1cell(
             idx = np.asarray(add_outline.values)
         elif is_int(add_outline) or (is_list_of_int(add_outline) and len(add_outline) != emb.shape[0]):
             idx = np.isin(np.arange(emb.shape[0]), add_outline).astype(bool)
-        elif isinstance(add_outline, (list, tuple, np.ndarray)) and len(add_outline) == emb.shape[0] and np.asarray(add_outline).dtype == bool:
+        elif (
+            isinstance(add_outline, (list, tuple, np.ndarray))
+            and len(add_outline) == emb.shape[0]
+            and np.asarray(add_outline).dtype == bool
+        ):
             idx = np.asarray(add_outline)
         elif isinstance(add_outline, str):
             idx = groups_to_bool(adata, add_outline, cluster_key)
@@ -243,7 +247,15 @@ def plot1cell(
         if idx is not None and np.sum(idx) > 0:
             print(idx)
             kw = {"s": 12}
-            plot_outline(emb[idx, 0], emb[idx, 1], kw, outline_width=outline_width, outline_color=outline_color, zorder=3, ax=ax_center)
+            plot_outline(
+                emb[idx, 0],
+                emb[idx, 1],
+                kw,
+                outline_width=outline_width,
+                outline_color=outline_color,
+                zorder=3,
+                ax=ax_center,
+            )
 
     # set the scatter size
     ax_center.set_axis_off()

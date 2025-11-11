@@ -31,7 +31,7 @@ class _RootLogger(logging.RootLogger):
         super().__init__(level)
         self.propagate = False
         _RootLogger.manager = logging.Manager(self)
-    
+
     def log(
         self,
         level: int,

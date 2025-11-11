@@ -24,24 +24,24 @@ if TYPE_CHECKING:
 
 __all__ = ["_get_data_modal", "_get_X", "_validate_obsm_key", "_validate_varm_key", "flatten_dict_values", "_list_to_str", "_str_to_list", "_matrix_to_edge", "_edge_to_matrix", "filter_network", "filter_by_quantile", "filter_by_top"]
 
-def _get_data_modal(data: Union[AnnData, MuData, GRNMuData], 
+def _get_data_modal(data: Union[AnnData, MuData, GRNMuData],
                     modal: Literal["GRN", "ATAC", "RNA"]) -> AnnData:
-    
+
     """
     Retrieve the data modal from the provided data object.
-    
+
     Parameters
     ----------
     data : Union[AnnData, MuData, GRNMuData]
         The data object from which the data modal is to be retrieved.
     modal : Literal["GRN", "ATAC", "RNA"]
-    
+
     Returns
     -------
     adata : AnnData
         The data modal from the provided data object.
     """
-    
+
     if isinstance(data, AnnData):
         # If the data object is an AnnData object, return the data modal from the object.
         adata = data
@@ -51,7 +51,7 @@ def _get_data_modal(data: Union[AnnData, MuData, GRNMuData],
     else:
         # If the data object is a GRNMuData object, return the data modal from the object.
         raise ValueError(f"Data modal {modal} not found in the provided data object.")
-    
+
     return adata
 
 
@@ -163,7 +163,7 @@ def _validate_obsm_key(adata: AnnData, key: str, as_df: bool =True) -> Union[pd.
     ------
     KeyError
         If the key or its corresponding columns are not found in the AnnData object.
-        
+
     Returns
     -------
     data : pd.DataFrame, np.ndarray
@@ -215,7 +215,7 @@ def _validate_varm_key(adata: AnnData, key: str, as_df: bool =True) -> Union[pd.
     ------
     KeyError
         If the key or its corresponding columns are not found in the AnnData object.
-        
+
     Returns
     -------
     data : pd.DataFrame, np.ndarray
@@ -242,13 +242,13 @@ def _validate_varm_key(adata: AnnData, key: str, as_df: bool =True) -> Union[pd.
 
 def flatten_dict_values(d):
     """
-    Flatten the values of a dictionary. 
-    
+    Flatten the values of a dictionary.
+
     Parameters
     ----------
     d : dict
         A dictionary to be flattened.
-    
+
     Returns
     -------
     flat_values : list
@@ -256,9 +256,9 @@ def flatten_dict_values(d):
     """
     flat_values = []
     for value in d.values():
-        if isinstance(value, dict): 
+        if isinstance(value, dict):
             flat_values.extend(flatten_dict_values(value))
-        else:  
+        else:
             flat_values.append(value)
     return flat_values
 
@@ -296,15 +296,15 @@ def _str_to_list(s: str) -> List[str]:
     return s.split(", ")
 
 
-def _matrix_to_edge(m: Union[np.ndarray, pd.DataFrame], 
-                   rownames: Optional[List[str]] = None, 
+def _matrix_to_edge(m: Union[np.ndarray, pd.DataFrame],
+                   rownames: Optional[List[str]] = None,
                    colnames: Optional[List[str]] = None) -> pd.DataFrame:
-    
+
     '''
     Convert matrix to edge list
     p.s. row for regulator, column for target
-    
-    
+
+
     Parameters:
     -----------
     m: matrix
@@ -319,7 +319,7 @@ def _matrix_to_edge(m: Union[np.ndarray, pd.DataFrame],
         mat = deepcopy(m)
         rownames = np.array(mat.index)
         colnames = np.array(mat.columns)
-        
+
     elif isinstance(m, np.ndarray):
         mat = deepcopy(m)
         mat = pd.DataFrame(mat)
@@ -327,7 +327,7 @@ def _matrix_to_edge(m: Union[np.ndarray, pd.DataFrame],
             raise ValueError('rownames and colnames must be provided if m is numpy.ndarray')
         rownames = np.array(rownames)
         colnames = np.array(colnames)
-    
+
     num_regs = rownames.shape[0]
     num_targets = colnames.shape[0]
 
@@ -340,34 +340,34 @@ def _matrix_to_edge(m: Union[np.ndarray, pd.DataFrame],
     #for row, col in idx:
     #    if row == col:
     #        idx.remove((row, col))
-                
+
     edges_df = pd.DataFrame(
         {'TF': rownames[idx_row], 'Target': colnames[idx_col], 'Score': [mat.iloc[row, col] for row, col in idx]})
 
     edge = edges_df.sort_values('Score', ascending=False).reset_index(drop=True)
-    
-    return edge 
+
+    return edge
 
 
 def _edge_to_matrix(edge: pd.DataFrame, rownames: Optional[List[str]] = None, colnames: Optional[List[str]] = None) -> pd.DataFrame:
     """
     Convert edge list to matrix
-    
+
     Parameters:
     -----------
     edge: DataFrame [TF, Target, Score]
     rownames: list of regulator names
     colnames: list of target names
-    
+
     Return:
     -------
     matrix DataFrame
     """
-    
+
     matrix = pd.DataFrame(0, index=rownames, columns=colnames)
     for _, row in edge.iterrows():
         matrix.loc[row['TF'], row['Target']] = row['score']
-    
+
     return matrix
 
 
@@ -448,7 +448,7 @@ def filter_network(
     elif method == 'top':
         filtered_df = filter_by_top(filtered_df, param, attri, binarize)
     # If method is 'none', no filtering is applied
-    
+
     if verbose:
         console = Console()
         table = Table(title="Network Filtered Statistics", show_header=True, header_style="bold white")
@@ -457,7 +457,7 @@ def filter_network(
         table.add_column("Attribute", style="cyan", width=20)
         table.add_column("Binarize", style="cyan", width=20)
         table.add_column("Filtered/Raw(Percentage)", style="cyan", width=20)
-        
+
         non_zero = filtered_df[attri].astype(bool).sum()
         table.add_row(method + f"({param})", attri, f"{binarize}", f"{non_zero}/{edges_df.shape[0]} ({non_zero/edges_df.shape[0]:.2f})")
         console.print(table)

@@ -108,13 +108,13 @@ class MAGNI:
         torch.backends.cudnn.deterministic = True
         np.random.seed(self.seed)
         torch.manual_seed(self.seed)
-        
+
         # Check if GPU is available.
         if self.device == 'cuda' and torch.cuda.is_available():
             self.device = torch.device("cuda")
         else:
             self.device = torch.device("cpu")
-        
+
         # Build Chromatin Constraint Matrix
         if gene_selected is None:
             adata = _get_data_modal(data, modal)
@@ -122,17 +122,17 @@ class MAGNI:
                 gene_selected = adata[:, adata.var.significant_genes].var_names
             else:
                 raise ValueError("Please provide a list of genes or run the gene selection step.")
-        
+
         self.adata_fil, self.chrom_constraint = chromatin_constraint(self.data, gene_selected=gene_selected)
 
         # Preprocess data.
         self.AX, self.Y, self.T = self._preprocess_data()
-        
+
         self.n_reg = self.adata_fil[:, self.adata_fil.var['is_reg']].shape[1]
         self.n_target = self.adata_fil[:, self.adata_fil.var['is_target']].shape[1]
         self.reg_names = self.adata_fil[:, self.adata_fil.var['is_reg']].var_names
         self.target_names = self.adata_fil[:, self.adata_fil.var['is_target']].var_names
-        
+
         # Create model.
         self.model = self.func(
             n_reg=self.n_reg,
@@ -145,7 +145,7 @@ class MAGNI:
 
         # Model summary
         logg.info(self.model)
-        
+
         # Create optimizer, scheduler, and loss function.
         self.optimizer = optim.Adam(
             self.model.parameters(), lr=self.lr, weight_decay=self.weight_decay
@@ -156,12 +156,12 @@ class MAGNI:
         )
 
         self.criterion = loss.MSELoss()
-        
+
     def _preprocess_data(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        
+
         # Preprocess data.
         sc.pp.neighbors(self.adata_fil, n_neighbors=30)
-        AX = partial_ordering(self.adata_fil[:, self.adata_fil.var['is_reg']], 
+        AX = partial_ordering(self.adata_fil[:, self.adata_fil.var['is_reg']],
                               dyn='palantir_pseudotime', lag=self.lag)
         Y = normalize_data(self.adata_fil[:, self.adata_fil.var['is_target']].X.A)
         T = self.adata_fil.obs['palantir_pseudotime'].values
@@ -172,7 +172,7 @@ class MAGNI:
         AX = AX.permute(1, 0, 2)  # K x BS x p -> BS x K x p
         Y = Y[sort_idx, :]  # BS x q
         T = T[sort_idx]
-        
+
         return AX.float(), Y.float(), torch.from_numpy(T).float()
 
     def _data_loader(self, AX: torch.Tensor, Y: torch.Tensor, T: torch.Tensor, shuffle: bool = True) -> DataLoader:
@@ -197,7 +197,7 @@ class MAGNI:
         """
         dataset = TensorDataset(AX, Y, T)
         return DataLoader(dataset, batch_size=self.batch_size, shuffle=shuffle)
-    
+
     def _train_epoch(self, model: nn.Module, AX: torch.Tensor, Y: torch.Tensor, T: torch.Tensor) -> Tuple[float, float, float, float]:
         """
         Train model for one epoch.
@@ -236,7 +236,7 @@ class MAGNI:
             # Sparsity-inducing penalty term
             loss_reg = (1 - self.alpha) * torch.mean(torch.mean(torch.norm(coeffs, dim=1, p=2), dim=0)) + \
                        self.alpha * torch.mean(torch.mean(torch.norm(coeffs, dim=1, p=1), dim=0))
-            
+
             # Temporal smoothness penalty term
             T = np.argsort(T.detach().cpu().numpy())
             T_plus1 = T + 1
@@ -257,7 +257,7 @@ class MAGNI:
 
         return train_loss / (batch_idx + 1), train_loss_mse / (batch_idx + 1), \
                train_loss_reg / (batch_idx + 1), train_loss_smooth / (batch_idx + 1)
-    
+
     def train(self) -> nn.Module:
         """
         Train the model.
@@ -276,7 +276,7 @@ class MAGNI:
             'train_loss_reg': [],
             'train_loss_smooth': []
         }
-        
+
         with Progress() as progress:
             task = progress.add_task("[cyan]Training...", total=self.max_iter)
 
@@ -314,9 +314,9 @@ class MAGNI:
         self.model.history = history
 
         return self.model
-    
-    def regulation_inference(self, 
-                             cv_thres: float = 0.2, 
+
+    def regulation_inference(self,
+                             cv_thres: float = 0.2,
                              binarize: List = ["quantile", 0.90],
                              acts_method: str = "mlm") -> GRNMuData:
         """
@@ -338,7 +338,7 @@ class MAGNI:
         GRNMuData
             Gene regulatory network object.
         """
-        
+
         logg.info("Starting regulation inference...")
         self.model.eval()
         ## shape of coeffs_final: N × K x p x q
@@ -349,7 +349,7 @@ class MAGNI:
                 coeffs, _ = self.model(AX)
                 coeffs = coeffs.permute(0,1,3,2)
                 coeffs_total[batch_idx*self.batch_size:(batch_idx+1)*self.batch_size, :, :, :] = coeffs.detach().cpu().numpy()
-    
+
         # Compute CV of the coefficients
         if cv_thres is not None:
             logg.info(f"Computing CV of the coefficients with {cv_thres}...")
@@ -357,23 +357,23 @@ class MAGNI:
             # filter out the coefficients with CV less than cv_thres
             cv_mask = np.expand_dims(cv_coeffs < cv_thres, axis=0)
             coeffs_final = coeffs_total * cv_mask
-        else: 
+        else:
             coeffs_final = coeffs_total
-        
+
         multiscale_network = np.squeeze(np.median(coeffs_final, axis=0)) # K x p x q
         ensemble_network = np.max(np.median(np.abs(coeffs_final), axis=0), axis=0) # p x q
-        
+
         logg.info("Estimating time lags...")
         norm_lags = self.estimate_lags(multiscale_network)
         logg.debug(f"Time lags shape: {norm_lags.shape}")
-        
+
         logg.info("Formulating network edges...")
-        edges = get_edgedf(ensemble_network, 
-                           multiscale_network, 
+        edges = get_edgedf(ensemble_network,
+                           multiscale_network,
                            norm_lags,
                            self.reg_names,
                            self.target_names)
-        
+
         # compute TF activity
         logg.info("Computing TF activity...")
         net_df = pd.DataFrame({
@@ -381,34 +381,34 @@ class MAGNI:
             'target': edges['Target'],
             'weight': edges['score']
         })
-        
-        tf_activity = get_acts(self.adata_fil.copy(), 
-                               method=acts_method, 
-                               net=net_df, 
+
+        tf_activity = get_acts(self.adata_fil.copy(),
+                               method=acts_method,
+                               net=net_df,
                                use_raw=False)
-        
+
         logg.info("Creating GRNMuData object...")
         # create GRNMuData Object
-        gdata = GRNMuData(data=self.data.copy(), 
+        gdata = GRNMuData(data=self.data.copy(),
                         network=edges,
                         tf_act=tf_activity)
         logg.debug(f"GRNMuData object: {gdata}")
-    
+
         # binarize the network
         if binarize is not None:
             logg.info(f"Binarizing network by {binarize[0]} with params {binarize[1]}...")
-            filtered_edges = filter_network(edges, 
-                                            filter_method=binarize[0], 
+            filtered_edges = filter_network(edges,
+                                            filter_method=binarize[0],
                                             filter_param=binarize[1],
                                             attri="score")
             binarized_edges = filtered_edges.copy()
             binarized_edges['score'] = np.where(binarized_edges['score'] > 0, 1, 0)
-            
+
             gdata.uns['binarized_network'] = binarized_edges
             logg.debug(f"Binarized network: {binarized_edges}")
-    
+
         return gdata
-    
+
     def estimate_lags(self, multiscale_network: NDArray) -> NDArray:
         """
         Estimate optimal lags.
@@ -425,6 +425,5 @@ class MAGNI:
         """
         est_lags = F.normalize(torch.Tensor(multiscale_network).permute(1,2,0), p=1,dim=-1).detach().cpu().numpy()
         norm_lags = np.abs((est_lags*(np.arange(5)+1)).sum(-1))
-        
+
         return norm_lags
-    

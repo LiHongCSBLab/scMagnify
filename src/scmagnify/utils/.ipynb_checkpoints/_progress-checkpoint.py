@@ -52,8 +52,8 @@ class NestedProgress(Progress):
             if footer:
                 self.columns = (footer_column, "")
             yield self.make_tasks_table([task])
-            
-            
+
+
 def init_progress(progress, verbosity, level):
     started = False
     if verbosity < level:

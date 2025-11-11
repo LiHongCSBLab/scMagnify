@@ -1,14 +1,17 @@
-import os
-import copy
 import logging
+import os
+import shutil
+from pathlib import Path
+
+import matplotlib
+from matplotlib import font_manager as fm
+from rich.console import Console
 from rich.logging import RichHandler
 from rich.table import Table
-from rich.console import Console
-from rich.tree import Tree
 from rich.theme import Theme
-
+from rich.tree import Tree
 from scanpy import _settings as scanpy_settings
-import scmagnify as scm
+
 from scmagnify.logging._logging import _LogFormatter, _RootLogger
 
 __all__ = ["settings", "autosave", "autoshow", "set_workspace", "set_genome", "load_fonts"]
@@ -27,24 +30,32 @@ There is no need to call the matplotlib pl.show() in this case.
 # Logging Setup
 # --------------
 
-custom_theme = Theme({
-    "logging.level.info": "bold green",  # INFO 级别颜色
-    "logging.level.warning": "bold yellow",  # WARNING 级别颜色
-    "logging.level.error": "bold red",  # ERROR 级别颜色
-    "logging.level.debug": "bold orange_red1",  # DEBUG 级别颜色
-})
+custom_theme = Theme(
+    {
+        "logging.level.info": "bold green",  # INFO 级别颜色
+        "logging.level.warning": "bold yellow",  # WARNING 级别颜色
+        "logging.level.error": "bold red",  # ERROR 级别颜色
+        "logging.level.debug": "bold orange_red1",  # DEBUG 级别颜色
+    }
+)
+
 
 def _set_log_file(settings):
     file = settings.logfile
     name = settings.logpath
     root = settings._root_logger
     console = Console(theme=custom_theme)
-    h = RichHandler(markup=True, 
-                    show_time=False, 
-                    show_path=False,
-                    log_time_format="[%Y-%m-%d %H:%M:%S]",
-                    console=console,
-                    ) if name is None else logging.FileHandler(name)
+    h = (
+        RichHandler(
+            markup=True,
+            show_time=False,
+            show_path=False,
+            log_time_format="[%Y-%m-%d %H:%M:%S]",
+            console=console,
+        )
+        if name is None
+        else logging.FileHandler(name)
+    )
     # h = logging.StreamHandler(file) if name is None else logging.FileHandler(name)
     h.setFormatter(_LogFormatter())
     h.setLevel(root.level)
@@ -55,7 +66,7 @@ def _set_log_file(settings):
         raise RuntimeError("scMagnify's root logger somehow got more than one handler.")
 
     root.addHandler(h)
-    
+
 
 # settings = copy.copy(settings)
 # settings._root_logger = _RootLogger(settings.verbosity)
@@ -116,13 +127,14 @@ class scMagnifySettings(scanpy_settings.ScanpyConfig):
 
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
-            cls._instance = super(scMagnifySettings, cls).__new__(cls, *args, **kwargs)
+            cls._instance = super().__new__(cls, *args, **kwargs)
             cls._instance._initialize(*args, **kwargs)
         return cls._instance
 
     def _initialize(self, *args, **kwargs):
-        super(scMagnifySettings, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self._root_logger = _RootLogger(self.verbosity)
+
 
 settings = scMagnifySettings()
 _set_log_file(settings)
@@ -136,11 +148,13 @@ settings.genomes_dir = None
 settings.models_dir = None
 settings.figures_dir = None
 
+
 def set_workspace(path, logging=False):
     """
     Set the working directory and create necessary subdirectories.
 
-    Parameters:
+    Parameters
+    ----------
     path (str): The path to the working directory.
     """
     # Ensure the path ends with a directory separator
@@ -150,13 +164,13 @@ def set_workspace(path, logging=False):
     # Create the main working directory if it doesn't exist
     if not os.path.exists(path):
         os.makedirs(path)
-        
+
     settings.work_dir = path
     # Define subdirectories
-    data_dir = os.path.join(path, 'data')
-    tmpfiles_dir = os.path.join(path, 'tmpfiles')
-    models_dir = os.path.join(path, 'models')
-    figures_dir = os.path.join(path, 'figures')
+    data_dir = os.path.join(path, "data")
+    tmpfiles_dir = os.path.join(path, "tmpfiles")
+    models_dir = os.path.join(path, "models")
+    figures_dir = os.path.join(path, "figures")
 
     # Create subdirectories if they don't exist
     for directory in [data_dir, tmpfiles_dir, models_dir, figures_dir]:
@@ -171,30 +185,30 @@ def set_workspace(path, logging=False):
 
     # Update the log file path if necessary
     if logging:
-        log_dir = os.path.join(path, 'log')
+        log_dir = os.path.join(path, "log")
         settings.log_dir = log_dir
         if not os.path.exists(log_dir):
             os.makedirs(log_dir)
-        settings.logpath = os.path.join(log_dir, 'scmagnify.log')
+        settings.logpath = os.path.join(log_dir, "scmagnify.log")
         _set_log_file(settings)
-        
+
     # Display the directory structure using rich.tree
     console = Console()
     tree = Tree(f"[bold white]workspace: {path}[/bold white]")
-    data_node = tree.add(f"[white]data[/white]")
-    models_node = tree.add(f"[white]models[/white]")
-    tmpfiles_node = tree.add(f"[white]tmpfiles[/white]")
-    figures_node = tree.add(f"[white]figures[/white]")
+    data_node = tree.add("[white]data[/white]")
+    models_node = tree.add("[white]models[/white]")
+    tmpfiles_node = tree.add("[white]tmpfiles[/white]")
+    figures_node = tree.add("[white]figures[/white]")
 
     if logging:
-        log_node = tree.add(f"[white]log[/white]")
-        log_node.add(f"[magenta]scmagnify.log[/magenta]")
+        log_node = tree.add("[white]log[/white]")
+        log_node.add("[magenta]scmagnify.log[/magenta]")
     console.print(tree)
-    
 
-#-----------------------
+
+# -----------------------
 # scMagnify Data Setup
-#------------------------
+# ------------------------
 settings.scm_caches = os.environ.get("SCMAGNIFY_DATA", None)
 settings.scm_data = os.path.join(settings.scm_caches, "scm_data") if settings.scm_caches is not None else None
 
@@ -206,10 +220,8 @@ settings.gtf_file = None
 settings.fasta_file = None
 settings.tf_file = None
 
-def set_genome(version: str, 
-               provider: str = "UCSC",
-               genomes_dir: str = None, 
-               download: bool = False):
+
+def set_genome(version: str, provider: str = "UCSC", genomes_dir: str = None, download: bool = False):
     """
     Set the reference genome for the analysis using genomepy.
 
@@ -223,12 +235,13 @@ def set_genome(version: str,
         The directory where the genome files are stored. Default is None.
     download : bool, optional
         If True, download the genome files if not found. Default is False.
-        
+
     """
     import genomepy
+
     # Set the genome version in settings
     settings.version = version
-    
+
     # Check if the genome is installed
     if genomes_dir is None:
         genomes_dir = settings.genomes_dir
@@ -239,7 +252,9 @@ def set_genome(version: str,
         genomepy.Genome(version, genomes_dir=genomes_dir)
         # settings.gtf_file = os.path.join(genomes_dir, version, f"{version}.gtf")
         if settings.scm_data is None:
-            raise FileNotFoundError("scMagnify data directory not set. Please set SCMAGNIFY_DATA environment variable and run scm.datasets.fetch_scm_data().")
+            raise FileNotFoundError(
+                "scMagnify data directory not set. Please set SCMAGNIFY_DATA environment variable and run scm.datasets.fetch_scm_data()."
+            )
         settings.gtf_file = os.path.join(settings.scm_data, "annotations", f"{version}.cellranger.gtf.gz")
         settings.fasta_file = os.path.join(genomes_dir, version, f"{version}.fa")
     except:
@@ -248,32 +263,30 @@ def set_genome(version: str,
             settings.gtf_file = os.path.join(genomes_dir, version, f"{version}.gtf")
             settings.fasta_file = os.path.join(genomes_dir, version, f"{version}.fa")
         else:
-            raise FileNotFoundError(f"Genome files for {version} not found. \n Please download the genome files using genomepy.install_genome() or set download=True.")
-        
+            raise FileNotFoundError(
+                f"Genome files for {version} not found. \n Please download the genome files using genomepy.install_genome() or set download=True."
+            )
+
     settings.tf_file = os.path.join(settings.scm_data, "tf_lists", f"allTFs_{version}.txt")
     if not os.path.exists(settings.tf_file):
-        raise FileNotFoundError(f"Transcription factor list for {version} not found. \n Please download the TF list using scmagnify.download_tf_list() or set download=True.")
-    
+        raise FileNotFoundError(
+            f"Transcription factor list for {version} not found. \n Please download the TF list using scmagnify.download_tf_list() or set download=True."
+        )
+
     console = Console()
-    
+
     table = Table(title="Genome Information")
     table.add_column("Version", style="cyan")
     table.add_column("Provider", style="magenta")
     table.add_column("Directory", style="magenta")
-    
+
     table.add_row(version, provider, genomes_dir)
     console.print(table)
 
-import os
-import shutil
-import matplotlib
-from matplotlib import font_manager as fm
-from pathlib import Path
 
-def load_fonts(font_list: list[str],
-               package_name: str = "scmagnify",
-               font_dir: str = "fonts",
-               clear_cache: bool = False) -> list[str]:
+def load_fonts(
+    font_list: list[str], package_name: str = "scmagnify", font_dir: str = "fonts", clear_cache: bool = False
+) -> list[str]:
     """
     Installs fonts from a package into matplotlib's font directory.
 
@@ -302,7 +315,7 @@ def load_fonts(font_list: list[str],
     mpl_font_dir = Path(matplotlib.get_data_path()) / "fonts" / "ttf"
     if not mpl_font_dir.exists():
         raise FileNotFoundError(f"Matplotlib font directory does not exist: {mpl_font_dir}")
-    
+
     fonts_were_copied = False
 
     # --- Step 1: Locate the font directory within the installed package ---
@@ -323,7 +336,7 @@ def load_fonts(font_list: list[str],
         for base_font in font_list:
             # Find all font files matching the base name (e.g., Arial, Arial-Bold)
             font_files = list(font_path.glob(f"{base_font}*.ttf"))
-            
+
             if not font_files:
                 print(f"ℹ️ No font files matching '{base_font}*' found in package directory {font_path}")
                 continue
@@ -348,11 +361,11 @@ def load_fonts(font_list: list[str],
             print("\n🔥 New fonts were installed. Clearing matplotlib font cache to apply changes.")
         else:
             print("🗑️ Clearing matplotlib font cache as requested...")
-            
+
         try:
             cache_dir = matplotlib.get_cachedir()
             for file in os.listdir(cache_dir):
-                if file.startswith('fontlist-'):
+                if file.startswith("fontlist-"):
                     file_path = os.path.join(cache_dir, file)
                     os.remove(file_path)
                     print(f"   - Removed cache file: {file}")
@@ -369,11 +382,9 @@ def load_fonts(font_list: list[str],
         for f_name in final_available_fonts:
             if f_name.startswith(base_font):
                 valid_fonts.add(f_name)
-    
+
     if not valid_fonts:
         valid_fonts.add("sans-serif")
         print("No valid fonts found; falling back to 'sans-serif'")
 
-    return sorted(list(valid_fonts))
-
-    
+    return sorted(valid_fonts)

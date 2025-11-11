@@ -9,7 +9,9 @@ Only add or edit texts here when normalizing parameter naming across
 plotting APIs. Other modules can import and reuse these snippets without
 changing their own code yet.
 """
+
 from __future__ import annotations
+
 from textwrap import dedent
 
 
@@ -17,7 +19,9 @@ def doc_params(**kwds):
     """Inject shared parameter docs into a function/class docstring.
 
     Usage: decorate a function and reference placeholders in its docstring,
-    e.g. """
+    e.g.
+    """
+
     def dec(obj):
         if obj.__doc__:
             obj.__doc__ = dedent(obj.__doc__).format(**kwds)
@@ -34,7 +38,6 @@ DOC = {
     "modal": "modal: str or None\n    Modality key (e.g., 'rna', 'atac') when using multi-modal data.",
     "layer": "layer: str or None\n    Layer name to use (e.g., 'X', 'log1p', custom).",
     "side_layer": "side_layer: str or None\n    Layer used by side/auxiliary panels.",
-
     # Selection/keys
     "key": "key: str or list[str]\n    Key in .obs/.var/.uns (or results key) specifying values to plot.",
     "var_key": "var_key: str or None\n    Variable key used for lookups in .var or .varm.",
@@ -47,7 +50,6 @@ DOC = {
     "n_top": "n_top: int\n    Number of top features to display per group/context.",
     "groups": "groups: str | list[str] | None\n    Restrict to specific categories when plotting categorical annotations.",
     "groupby": "groupby: str or None\n    Column in .obs to define groups when aggregating/plotting.",
-
     # Embedding / coordinates
     "basis": "basis: str or list[str] | None\n    Embedding key (e.g., 'umap', 'tsne', 'pca').",
     "components": "components: str | list[str] | None\n    Components to plot, e.g., '1,2' or ['1,2','2,3'].",
@@ -55,7 +57,6 @@ DOC = {
     "x": "x: str | array-like | None\n    X values or key for values in .obsm/.obs.",
     "y": "y: str | array-like | None\n    Y values or key for values in .obsm/.obs.",
     "layout": "layout: str\n    Graph layout name, e.g. 'fa', 'fr', 'kk'.",
-
     # Color / aesthetics
     "color": "color: str | list[str] | None\n    Key(s) in .obs/.var or array-like values used for coloring.",
     "palette": "palette: list[str] | dict | None\n    Colors to use for categorical groups (name list or mapping).",
@@ -67,7 +68,6 @@ DOC = {
     "legend_fontweight": "legend_fontweight: str | int | None\n    Weight for legend text (e.g., 'normal', 'bold').",
     "legend_fontoutline": "legend_fontoutline: float | None\n    Outline width (pt) applied to legend text.",
     "legend_align_text": "legend_align_text: bool | {{'x','y','xy'}} | None\n    Align legend text positions along a given axis.",
-
     # Size / figure / labels
     "figsize": "figsize: tuple[float, float] | None\n    Figure size in inches (width, height).",
     "fig_width": "fig_width: float | None\n    Figure width in inches (height derived internally).",
@@ -82,7 +82,6 @@ DOC = {
     "xlabel": "xlabel: str | None\n    Label for x-axis.",
     "ylabel": "ylabel: str | None\n    Label for y-axis.",
     "fontsize": "fontsize: float | None\n    Base label/text font size.",
-
     # Scatter-specific aesthetics
     "size": "size: float | array-like\n    Marker size(s).",
     "alpha": "alpha: float\n    Marker alpha (0 transparent, 1 opaque).",
@@ -90,7 +89,6 @@ DOC = {
     "frameon": "frameon: bool\n    Draw a frame around the plot.",
     "zorder": "zorder: int | float | None\n    Matplotlib drawing order for points.",
     "aspect": "aspect: float | {{'auto','equal'}}\n    Axis aspect ratio.",
-
     # Smoothing/denoising
     "smooth": "smooth: bool | int | None\n    Whether to smooth/average values (int -> window/neighbors).",
     "smooth_method": "smooth_method: {{'gam','poly','convolve'}} | None\n    Method used to smooth trends/values.",
@@ -101,22 +99,18 @@ DOC = {
     "standard_scale": "standard_scale: {{0,1,None}}\n    Standardize features over variables (0) or observations (1).",
     "normalize": "normalize: bool | None\n    Normalize values before plotting.",
     "normalize_data": "normalize_data: bool | None\n    Normalize x/y to [0,1] for plotting (scatter).",
-
     # Ordering / sorting
     "sort": "sort: bool | None\n    Sort rows/columns according to cluster/order.",
     "sortby": "sortby: str | list[str] | None\n    Variable(s) to sort cells/features by before plotting.",
-
     # Percentile / rescaling
     "perc": "perc: tuple[float,float] | None\n    Percentile clip for continuous colors, e.g., (2, 98).",
     "rescale_color": "rescale_color: tuple[float,float] | None\n    Min/max bounds for color rescaling.",
     "color_gradients": "color_gradients: str | np.ndarray | None\n    Key for .obsm or precomputed color gradients.",
-
     # Theming
     "context": "context: str | None\n    Seaborn context, e.g., 'notebook', 'paper'.",
     "default_context": "default_context: bool\n    If True, reset to default seaborn context before plotting.",
     "theme": "theme: str | dict | None\n    Theme name or rcParams overrides.",
     "font_scale": "font_scale: float | None\n    Scale factor applied to fonts for the plot.",
-
     # Coverage / genome-style plots
     "region": "region: str\n    Genomic region (e.g., 'chr1:1,000,000-1,050,000').",
     "anchor_gene": "anchor_gene: str | None\n    Anchor gene symbol; region will be centered/expanded around it.",
@@ -132,9 +126,10 @@ DOC = {
     "collapsed": "collapsed: bool | None\n    Collapse groups into a single track where applicable.",
     "gtf": "gtf: str | PathLike | None\n    Path to GTF/GFF annotation file.",
     "links": "links: DataFrame | None\n    Precomputed links/loops to display.",
-    "genes": "genes: list[str] | None\n    Genes to annotate in the region (also used as selection).",
+    "genes_region": "genes_region: list[str] | None\n    Genes to annotate in the region (also used as selection).",
     "highlight_peaks": "highlight_peaks: list[str] | DataFrame | None\n    Peak coordinates or ids to emphasize.",
-    "fig_width": "fig_width: float | None\n    Figure width for genome/coverage viewer.",
+    "fig_width_main": "fig_width_main: float | None\n    Figure width for genome/coverage viewer.",
+    "fig_width2": "fig_width2: float | None\n    Secondary figure width (deprecated).",
     "plot_cov_size": "plot_cov_size: float | None\n    Relative height of coverage panel.",
     "plot_bed_size": "plot_bed_size: float | None\n    Relative height of BED/peak panel.",
     "y_font": "y_font: float | None\n    Font size for y-axis labels in coverage-like plots.",
@@ -145,7 +140,6 @@ DOC = {
     "nfrags_key": "nfrags_key: str | None\n    Key in .obs specifying number of fragments per cell/sample.",
     "links_color": "links_color: str | None\n    Color used to draw links/loops.",
     "rasterize_coverage": "rasterize_coverage: bool | None\n    Rasterize the coverage panel for large datasets.",
-
     # Network plots
     "tf_layout_mode": "tf_layout_mode: str\n    Layout mode for TF circle/arrangement (e.g., 'circle', 'bipartite').",
     "node_color_map": "node_color_map: dict[str, str] | None\n    Mapping node -> color.",
@@ -165,14 +159,12 @@ DOC = {
     "highlight_shadow_resolution": "highlight_shadow_resolution: int | None\n    Resolution of the shadow hull.",
     "draw_cluster_wedges": "draw_cluster_wedges: bool | None\n    Draw wedges to indicate cluster sectors.",
     "draw_cluster_labels": "draw_cluster_labels: bool | None\n    Draw cluster names outside the circle.",
-
     # Heatmap / clustering
     "col_cluster": "col_cluster: bool | None\n    Cluster columns (cells) in heatmaps.",
     "row_cluster": "row_cluster: bool | None\n    Cluster rows (features) in heatmaps.",
     "col_color": "col_color: str | list[str] | None\n    Column color annotations (categorical keys or colors).",
     "show_xticklabels": "show_xticklabels: bool | None\n    Whether to draw x tick labels.",
     "show_yticklabels": "show_yticklabels: bool | None\n    Whether to draw y tick labels.",
-
     # I/O & display
     "show": "show: bool | None\n    Show the plot and do not return axes when True.",
     "save": "save: bool | str | None\n    If True or str, save the figure (str is suffix/filename).",
@@ -195,11 +187,7 @@ GROUPS = {
         )
         if k in DOC
     ),
-    "embedding": "\n".join(
-        DOC[k]
-        for k in ("basis", "components", "projection", "x", "y")
-        if k in DOC
-    ),
+    "embedding": "\n".join(DOC[k] for k in ("basis", "components", "projection", "x", "y") if k in DOC),
     "coloring": "\n".join(
         DOC[k]
         for k in (
@@ -216,12 +204,8 @@ GROUPS = {
         )
         if k in DOC
     ),
-    "layout": "\n".join(
-        DOC[k] for k in ("ncols", "nrows", "wspace", "hspace", "ax") if k in DOC
-    ),
-    "labels": "\n".join(
-        DOC[k] for k in ("title", "title_fontsize", "xlabel", "ylabel", "fontsize") if k in DOC
-    ),
+    "layout": "\n".join(DOC[k] for k in ("ncols", "nrows", "wspace", "hspace", "ax") if k in DOC),
+    "labels": "\n".join(DOC[k] for k in ("title", "title_fontsize", "xlabel", "ylabel", "fontsize") if k in DOC),
     "smoothing": "\n".join(
         DOC[k]
         for k in (

@@ -1,26 +1,31 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-import numpy as np
-import pandas as pd
+
 import matplotlib.pyplot as plt
+import numpy as np
 from matplotlib.colors import to_hex
-from scipy.cluster.hierarchy import linkage, leaves_list
-from scmagnify.utils import _edge_to_matrix, _get_data_modal, d, inject_docs
-from scmagnify.plotting._utils import DEFAULT_CONTEXT, savefig_or_show
+from scipy.cluster.hierarchy import leaves_list, linkage
+
 from scmagnify import logging as logg
+from scmagnify.plotting._utils import savefig_or_show
+from scmagnify.utils import _edge_to_matrix, _get_data_modal, d
 
 if TYPE_CHECKING:
-    from typing import Literal, Union, Optional, Sequence
+    from collections.abc import Sequence
+    from typing import Literal
+
     from anndata import AnnData
     from mudata import MuData
+
     from scmagnify import GRNMuData
 
 __all__ = ["circosplot"]
-    
+
+
 @d.dedent
 def circosplot(
-    data: Union[AnnData, MuData, GRNMuData],
+    data: AnnData | MuData | GRNMuData,
     modal: Literal["RNA", "ATAC", "GRN"] = "GRN",
     regfactor_key: str = "regfactors",
     lag_key: str = "Lag",
@@ -31,29 +36,28 @@ def circosplot(
     top_tfs: int = 25,
     cluster: bool = True,
     colorbar: bool = False,
-    circos_kws: Optional[dict] = None,
-    track_kws: Optional[dict] = None,
-    heatmap_kws1: Optional[dict] = None,
-    heatmap_kws2: Optional[dict] = None,
-    bar_kws: Optional[dict] = None,
-    link_kws: Optional[dict] = None,
-    label_kws: Optional[dict] = None,
+    circos_kws: dict | None = None,
+    track_kws: dict | None = None,
+    heatmap_kws1: dict | None = None,
+    heatmap_kws2: dict | None = None,
+    bar_kws: dict | None = None,
+    link_kws: dict | None = None,
+    label_kws: dict | None = None,
     figsize: tuple = (8, 8),
-    embedding_key: Optional[str] = None,
-    color_key: Optional[str] = None,
+    embedding_key: str | None = None,
+    color_key: str | None = None,
     center_axes_rect: Sequence[float] = (0.40, 0.45, 0.20, 0.20),
-    palette: Optional[Union[str, list]] = None,
-    scatter_kws: Optional[dict] = None,
+    palette: str | list | None = None,
+    scatter_kws: dict | None = None,
     show: bool = True,
-    save: Optional[str] = None,
+    save: str | None = None,
     **kwargs,
-) -> Optional[plt.Figure]:
+) -> plt.Figure | None:
     """
     Plot a Circos plot for GRN analysis with an optional central embedding scatter plot.
 
     Parameters
     ----------
-
     %(data)s
     %(modal)s
     regfactor_key
@@ -108,12 +112,24 @@ def circosplot(
     """
     initial_rc_params = plt.rcParams.copy()
     from pycirclize import Circos
-    
+
     # Default parameters for each group
     default_circos_kws = {"start": -25, "end": 335, "space": 10}
     default_track_kws = {"track1_radius": (60, 100), "track2_radius": (40, 55)}
-    default_heatmap_kws2 = {"vmin": -1, "vmax": 1, "cmap": "RdBu_r", "show_value": False, "rect_kws": {"ec": "white", "lw": 1}}
-    default_heatmap_kws1 = {"vmin": -1, "vmax": 1, "cmap": "Reds", "show_value": False, "rect_kws": {"ec": "white", "lw": 0}}
+    default_heatmap_kws2 = {
+        "vmin": -1,
+        "vmax": 1,
+        "cmap": "RdBu_r",
+        "show_value": False,
+        "rect_kws": {"ec": "white", "lw": 1},
+    }
+    default_heatmap_kws1 = {
+        "vmin": -1,
+        "vmax": 1,
+        "cmap": "Reds",
+        "show_value": False,
+        "rect_kws": {"ec": "white", "lw": 0},
+    }
     default_bar_kws = {"color": "#E18974", "ec": "gray", "lw": 1, "alpha": 0.8}
     default_link_kws = {"color": "gray", "lw": 1, "alpha": 0.3}
     default_label_kws = {"label_size": 12, "label_orientation": "vertical", "label_color": "black"}
@@ -133,11 +149,11 @@ def circosplot(
         default_link_kws.update(link_kws)
     if label_kws is not None:
         default_label_kws.update(label_kws)
-        
+
     # Get the specific modality data (adata) for tracks
     # Note: 'data' remains the root object for .uns, .obsm, .obs
     adata = _get_data_modal(data, modal)
-    
+
     # Extract Regulon data (from root data.uns)
     if regfactor_key not in data.uns:
         raise KeyError(f"Key '{regfactor_key}' not found in `data.uns`.")
@@ -171,7 +187,7 @@ def circosplot(
     # Initialize Circos sectors
     sectors = {"Lag": len(lag_df), "TF": top_tfs}
     circos = Circos(sectors, **default_circos_kws, **kwargs)
-    
+
     # ------------
     # Sector: Lag
     # ------------
@@ -186,8 +202,8 @@ def circosplot(
     track1.axis()
     track1.xticks(x, xlabels, outer=True, label_size=default_label_kws["label_size"])
     track1.heatmap(lag_df.values.T, **default_heatmap_kws1)
-    track1.yticks(y, ylabels, label_size=default_label_kws["label_size"]-3)
-    
+    track1.yticks(y, ylabels, label_size=default_label_kws["label_size"] - 3)
+
     # Track 2: Arrow plot for TF
     track2 = sector.add_track((45, 55))
     track2.arrow(0, len(lag_df), head_length=4, shaft_ratio=1.0, fc="#F3C9AF", ec="gray", lw=0.5)
@@ -213,7 +229,13 @@ def circosplot(
 
     track1.heatmap(data_tf, **default_heatmap_kws2)
     track1.axis()
-    track1.xticks(x, xlabels, outer=True, label_size=default_label_kws["label_size"], label_orientation=default_label_kws["label_orientation"])
+    track1.xticks(
+        x,
+        xlabels,
+        outer=True,
+        label_size=default_label_kws["label_size"],
+        label_orientation=default_label_kws["label_orientation"],
+    )
 
     # Track 2: Bar plot for degree centrality
     track2 = sector.add_track(default_track_kws["track2_radius"])
@@ -224,12 +246,12 @@ def circosplot(
     # col_intersect = pd.Index(xlabels).intersection(matrix.columns)
     # row_intersect = pd.Index(xlabels).intersection(matrix.index)
     # matrix_filtered = matrix.loc[row_intersect, col_intersect]
-    
+
     # for row_idx, row in enumerate(pd.Index(xlabels)):
     #     for col_idx, col in enumerate(matrix_filtered.columns):
     #         if matrix_filtered.loc[row, col] == 1:
     #             circos.link(("TF", row_idx + 0.5, row_idx + 0.5), ("TF", col_idx + 0.5, col_idx + 0.5), **default_link_kws)
-                
+
     # if tf_selected is not None:
     #     for tf in tf_selected:
     #         if tf in pd.Index(xlabels):
@@ -241,50 +263,62 @@ def circosplot(
 
     # Add colorbars
     if colorbar:
-        circos.colorbar(bounds=(1.1, 0.25, 0.2, 0.02), vmin=-1, vmax=1, cmap="Reds", label="Lag", orientation="horizontal")
-        circos.colorbar(bounds=(1.1, 0.1, 0.2, 0.02), vmin=-1, vmax=1, cmap="RdBu_r", label="TF", orientation="horizontal")
-    
-    
+        circos.colorbar(
+            bounds=(1.1, 0.25, 0.2, 0.02), vmin=-1, vmax=1, cmap="Reds", label="Lag", orientation="horizontal"
+        )
+        circos.colorbar(
+            bounds=(1.1, 0.1, 0.2, 0.02), vmin=-1, vmax=1, cmap="RdBu_r", label="TF", orientation="horizontal"
+        )
+
     # Plot and save
     fig = circos.plotfig(figsize=figsize)
-    
+
     # --- Add central embedding plot ---
     if embedding_key is not None:
         if embedding_key not in adata.obsm:
             logg.warning(f"Embedding key '{embedding_key}' not found in data.obsm. Skipping central plot.")
         else:
             emb = adata.obsm[embedding_key]
-            
+
             # Get colors (from root data.obs)
-            cell_colors = "gray" # Default
+            cell_colors = "gray"  # Default
             if color_key is not None:
                 if color_key not in adata.obs:
                     logg.warning(f"Color key '{color_key}' not found in data.obs. Using default color.")
                 else:
-                    cl_series = adata.obs[color_key].astype('category')
-                    
+                    cl_series = adata.obs[color_key].astype("category")
+
                     # Find color map
                     color_map = None
                     if palette is not None:
                         if isinstance(palette, list):
-                            color_map = {cat: color for cat, color in zip(cl_series.cat.categories, palette)}
+                            color_map = {
+                                cat: color for cat, color in zip(cl_series.cat.categories, palette, strict=False)
+                            }
                         elif isinstance(palette, str):
                             cmap_func = plt.get_cmap(palette)
-                            color_map = {cat: to_hex(cmap_func(i % cmap_func.N)) for i, cat in enumerate(cl_series.cat.categories)}
+                            color_map = {
+                                cat: to_hex(cmap_func(i % cmap_func.N))
+                                for i, cat in enumerate(cl_series.cat.categories)
+                            }
                     elif f"{color_key}_colors" in adata.uns:
                         # Try to use standard scanpy color convention
                         uns_colors = adata.uns[f"{color_key}_colors"]
                         cats_obs = cl_series.cat.categories
                         if len(uns_colors) == len(cats_obs):
-                            color_map = {cat: color for cat, color in zip(cats_obs, uns_colors)}
-                    
-                    if color_map is None: # Fallback
-                        logg.info(f"No palette or matching .uns key found. Generating default colors for '{color_key}'.")
+                            color_map = {cat: color for cat, color in zip(cats_obs, uns_colors, strict=False)}
+
+                    if color_map is None:  # Fallback
+                        logg.info(
+                            f"No palette or matching .uns key found. Generating default colors for '{color_key}'."
+                        )
                         base_cmap = plt.get_cmap("tab20")
-                        color_map = {cat: to_hex(base_cmap(i % base_cmap.N)) for i, cat in enumerate(cl_series.cat.categories)}
+                        color_map = {
+                            cat: to_hex(base_cmap(i % base_cmap.N)) for i, cat in enumerate(cl_series.cat.categories)
+                        }
 
                     cell_colors = cl_series.map(color_map).values
-            
+
             # Setup scatter kws
             default_scatter_kws = {"s": 5, "alpha": 0.8, "linewidths": 0, "rasterized": True}
             if scatter_kws is not None:
@@ -296,13 +330,22 @@ def circosplot(
             ax_center.set_title(f"{color_key}", fontsize=12)
             # legend
             if color_key is not None and color_map is not None:
-                handles = [plt.Line2D([0], [0], marker='o', color='w', label=cat,
-                                      markerfacecolor=color, markersize=6) for cat, color in color_map.items()]
-                ax_center.legend(handles=handles, title=color_key, loc='lower right', fontsize=8, title_fontsize=0, bbox_to_anchor=(1.00, -0.25))
+                handles = [
+                    plt.Line2D([0], [0], marker="o", color="w", label=cat, markerfacecolor=color, markersize=6)
+                    for cat, color in color_map.items()
+                ]
+                ax_center.legend(
+                    handles=handles,
+                    title=color_key,
+                    loc="lower right",
+                    fontsize=8,
+                    title_fontsize=0,
+                    bbox_to_anchor=(1.00, -0.25),
+                )
 
             ax_center.set_axis_off()
-    
+
     # Reset rcParams
     plt.rcParams.update(initial_rc_params)
-    
+
     savefig_or_show("circosplot", show=show, save=save)

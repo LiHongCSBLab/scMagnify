@@ -2,41 +2,32 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-import os
+import math
 import re
 from collections import abc
+from typing import TYPE_CHECKING
 
-from cycler import Cycler, cycler
-
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from pandas import Index
-from scipy import stats
-from scipy.sparse import issparse
-from anndata import AnnData
-from mudata import MuData
-
 import seaborn as sns
-import matplotlib.pyplot as plt
-import matplotlib.transforms as tx
+from anndata import AnnData
+from cycler import Cycler, cycler
 from matplotlib import patheffects, rcParams
-from matplotlib.collections import LineCollection
-from matplotlib.colors import cnames, is_color_like, ListedColormap, to_rgb
+from matplotlib.colors import ListedColormap, cnames, is_color_like, to_rgb
 from matplotlib.gridspec import SubplotSpec
 from matplotlib.ticker import MaxNLocator
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+from pandas import Index
+from scipy.sparse import issparse
 
 from scmagnify import logging as logg
 from scmagnify.settings import settings
-from ._palettes import default_26, default_64, additional_colors
 
+from ._palettes import additional_colors, default_26, default_64
 
 if TYPE_CHECKING:
-    from typing import Literal, Union, Optional, Tuple, List, Dict
     from anndata import AnnData
-    from mudata import MuData
 
 
 """Default settings and constants"""
@@ -54,9 +45,13 @@ DEFAULT_CONTEXT = {
 }
 
 FONT_SCALE_KEYS = [
-    "font.size", "axes.labelsize", "axes.titlesize",
-    "xtick.labelsize", "ytick.labelsize", "legend.fontsize",
-    "legend.title_fontsize"
+    "font.size",
+    "axes.labelsize",
+    "axes.titlesize",
+    "xtick.labelsize",
+    "ytick.labelsize",
+    "legend.fontsize",
+    "legend.title_fontsize",
 ]
 
 
@@ -74,7 +69,7 @@ def make_dense(X) -> np.ndarray:
         np.ndarray: The dense numpy array representation of the input matrix.
     """
     if issparse(X):
-        XA = X.toarray() if X.ndim == 2 else X.A1 # X.A1 ≈ X.A.flatten()
+        XA = X.toarray() if X.ndim == 2 else X.A1  # X.A1 ≈ X.A.flatten()
     else:
         XA = X.A1 if isinstance(X, np.matrix) else X
     return np.array(XA)
@@ -170,7 +165,7 @@ def is_list_or_array(key) -> bool:
             The input to check.
 
     Returns
-    -------    
+    -------
         bool: True if the input is a list, tuple, or numpy array, False otherwise.
     """
     return isinstance(key, (list, tuple, np.record, np.ndarray))
@@ -192,11 +187,7 @@ def is_list_of_str(key, max_len=None) -> bool:
         bool: True if the input is a list of strings, False otherwise.
     """
     if max_len is not None:
-        return (
-            is_list_or_array(key)
-            and len(key) < max_len
-            and all(isinstance(item, str) for item in key)
-        )
+        return is_list_or_array(key) and len(key) < max_len and all(isinstance(item, str) for item in key)
     else:
         return is_list(key) and all(isinstance(item, str) for item in key)
 
@@ -214,9 +205,7 @@ def is_list_of_list(lst) -> bool:
     -------
         bool: True if the input is a list of lists, False otherwise.
     """
-    return lst is not None and any(
-        isinstance(list_element, list) for list_element in lst
-    )
+    return lst is not None and any(isinstance(list_element, list) for list_element in lst)
 
 
 def is_list_of_int(lst) -> bool:
@@ -259,11 +248,13 @@ def to_val(key):
     """
     Convert a list or tuple with a single element to that element.
 
-    Parameters:
+    Parameters
+    ----------
         key: Union[list, tuple]
             The input to convert.
 
-    Returns:
+    Returns
+    -------
         Any: The single element if the input is a list or tuple with one element, otherwise the input itself.
     """
     return key[0] if isinstance(key, (list, tuple)) and len(key) == 1 else key
@@ -275,9 +266,7 @@ def strings_to_categoricals(adata):
     from pandas.api.types import is_bool_dtype, is_integer_dtype, is_string_dtype
 
     def is_valid_dtype(values):
-        return (
-            is_string_dtype(values) or is_integer_dtype(values) or is_bool_dtype(values)
-        )
+        return is_string_dtype(values) or is_integer_dtype(values) or is_bool_dtype(values)
 
     df = adata.obs
     df_keys = [key for key in df.columns if is_valid_dtype(df[key])]
@@ -294,13 +283,14 @@ def strings_to_categoricals(adata):
         c = Categorical(c)
         if 1 < len(c.categories) < min(len(c), 100):
             df[key] = c
-            
-            
+
+
 def get_figure_params(figsize=None, dpi=None, ncols=1):
     """
     Get the figure size and DPI based on the provided parameters or default settings.
 
-    Parameters:
+    Parameters
+    ----------
         figsize: Optional[Tuple[float, float]]
             The desired figure size (width, height) in inches. If None, uses the default from `rcParams`.
         dpi: Optional[int]
@@ -308,7 +298,8 @@ def get_figure_params(figsize=None, dpi=None, ncols=1):
         ncols: int
             The number of columns in the figure layout.
 
-    Returns:
+    Returns
+    -------
         Tuple[Tuple[float, float], int]: The adjusted figure size and DPI.
     """
     figsize = rcParams["figure.figsize"] if figsize is None else figsize
@@ -324,7 +315,8 @@ def get_ax(ax=None, show=None, figsize=None, dpi=None, projection=None):
     """
     Get or create an axis for plotting.
 
-    Parameters:
+    Parameters
+    ----------
         ax: Optional[Union[Axes, SubplotSpec]]
             An existing axis or subplot specification. If None, a new axis is created.
         show: Optional[bool]
@@ -336,15 +328,14 @@ def get_ax(ax=None, show=None, figsize=None, dpi=None, projection=None):
         projection: Optional[str]
             The projection type for the axis (e.g., "3d").
 
-    Returns:
+    Returns
+    -------
         Tuple[Axes, Optional[bool]]: The axis and the `show` flag.
     """
     figsize, _ = get_figure_params(figsize)
     if ax is None:
         projection = "3d" if projection == "3d" else None
-        _, ax = plt.subplots(
-            figsize=figsize, dpi=dpi, subplot_kw={"projection": projection}
-        )
+        _, ax = plt.subplots(figsize=figsize, dpi=dpi, subplot_kw={"projection": projection})
     elif isinstance(ax, SubplotSpec):
         geo = ax.get_geometry()
         if show is None:
@@ -357,13 +348,15 @@ def get_kwargs(kwargs, dict_new_kwargs):
     """
     Update the keyword arguments with new values.
 
-    Parameters:
+    Parameters
+    ----------
         kwargs: Dict[str, Any]
             The original keyword arguments.
         dict_new_kwargs: Dict[str, Any]
             The new keyword arguments to update or add.
 
-    Returns:
+    Returns
+    -------
         Dict[str, Any]: The updated keyword arguments.
     """
     kwargs = kwargs.copy()
@@ -375,7 +368,8 @@ def check_basis(adata: AnnData, basis: str):
     """
     Check if the basis exists in `adata.obsm` and rename it to the convention `X_{basis}` if necessary.
 
-    Parameters:
+    Parameters
+    ----------
         adata: AnnData
             The AnnData object to check.
         basis: str
@@ -390,13 +384,15 @@ def get_basis(adata: AnnData, basis: str) -> str:
     """
     Get the basis key, ensuring it follows the convention `X_{basis}`.
 
-    Parameters:
+    Parameters
+    ----------
         adata: AnnData
             The AnnData object to check.
         basis: str
             The basis key.
 
-    Returns:
+    Returns
+    -------
         str: The validated basis key.
     """
     if isinstance(basis, str) and basis.startswith("X_"):
@@ -409,13 +405,15 @@ def to_valid_bases_list(adata: AnnData, keys) -> list:
     """
     Convert a list of keys to a valid list of bases, ensuring they exist in `adata`.
 
-    Parameters:
+    Parameters
+    ----------
         adata: AnnData
             The AnnData object to check.
         keys: Union[str, List[str], pd.DataFrame]
             The keys to validate. Can be a string, list of strings, or a DataFrame.
 
-    Returns:
+    Returns
+    -------
         list: The validated list of bases.
     """
     if isinstance(keys, pd.DataFrame):
@@ -453,7 +451,8 @@ def get_components(components=None, basis=None, projection=None) -> np.ndarray:
     """
     Get the components for plotting, adjusting for dimensionality if necessary.
 
-    Parameters:
+    Parameters
+    ----------
         components: Optional[Union[str, List[int]]]
             The components to use. If None, defaults to "1,2" or "1,2,3" for 2D or 3D projections.
         basis: Optional[str]
@@ -461,7 +460,8 @@ def get_components(components=None, basis=None, projection=None) -> np.ndarray:
         projection: Optional[str]
             The projection type (e.g., "3d").
 
-    Returns:
+    Returns
+    -------
         np.ndarray: The adjusted components as an array of integers.
     """
     if components is None:
@@ -478,7 +478,8 @@ def get_obs_vector(adata: AnnData, basis: str, layer=None, use_raw=None) -> np.n
     """
     Get an observation vector from `adata`.
 
-    Parameters:
+    Parameters
+    ----------
         adata: AnnData
             The AnnData object.
         basis: str
@@ -488,7 +489,8 @@ def get_obs_vector(adata: AnnData, basis: str, layer=None, use_raw=None) -> np.n
         use_raw: Optional[bool]
             Whether to use the raw data. If None, uses the default behavior.
 
-    Returns:
+    Returns
+    -------
         np.ndarray: The observation vector.
     """
     return (
@@ -504,13 +506,15 @@ def get_value_counts(adata: AnnData, color: str) -> np.ndarray:
     """
     Get the value counts for a categorical observation in `adata`.
 
-    Parameters:
+    Parameters
+    ----------
         adata: AnnData
             The AnnData object.
         color: str
             The key for the categorical observation.
 
-    Returns:
+    Returns
+    -------
         np.ndarray: The value counts as an array.
     """
     value_counts = adata.obs[color].value_counts()
@@ -520,11 +524,12 @@ def get_value_counts(adata: AnnData, color: str) -> np.ndarray:
     return np.array(probs, dtype=np.float32)
 
 
-def get_groups(adata: AnnData, groups, groupby=None) -> Tuple[Optional[List[str]], Optional[str]]:
+def get_groups(adata: AnnData, groups, groupby=None) -> tuple[list[str] | None, str | None]:
     """
     Get the groups and groupby key for clustering or categorization.
 
-    Parameters:
+    Parameters
+    ----------
         adata: AnnData
             The AnnData object.
         groups: Union[str, List[str], bool]
@@ -532,17 +537,12 @@ def get_groups(adata: AnnData, groups, groupby=None) -> Tuple[Optional[List[str]
         groupby: Optional[str]
             The key in `adata.obs` to group by.
 
-    Returns:
+    Returns
+    -------
         Tuple[Optional[List[str]], Optional[str]]: The groups and groupby key.
     """
     if not isinstance(groupby, str) or groupby not in adata.obs.keys():
-        groupby = (
-            "clusters"
-            if "clusters" in adata.obs.keys()
-            else "louvain"
-            if "louvain" in adata.obs.keys()
-            else None
-        )
+        groupby = "clusters" if "clusters" in adata.obs.keys() else "louvain" if "louvain" in adata.obs.keys() else None
     if groups is True:
         return None, groupby
     if groups is not None and not isinstance(groups, str) and len(groups) == 1:
@@ -560,11 +560,13 @@ def get_groups(adata: AnnData, groups, groupby=None) -> Tuple[Optional[List[str]
         groups = [groups]
     return groups, groupby
 
-def groups_to_bool(adata: AnnData, groups, groupby: Optional[str] = None) -> np.ndarray:
+
+def groups_to_bool(adata: AnnData, groups, groupby: str | None = None) -> np.ndarray:
     """
     Convert groups to a boolean mask based on the specified groupby key.
 
-    Parameters:
+    Parameters
+    ----------
         adata: AnnData
             The AnnData object containing the data.
         groups: Union[str, List[str], np.ndarray]
@@ -572,7 +574,8 @@ def groups_to_bool(adata: AnnData, groups, groupby: Optional[str] = None) -> np.
         groupby: Optional[str]
             The key in `adata.obs` to group by. If None, groups are inferred directly.
 
-    Returns:
+    Returns
+    -------
         np.ndarray: A boolean mask indicating the selected groups.
     """
     groups, groupby = get_groups(adata, groups, groupby)
@@ -590,21 +593,18 @@ def groups_to_bool(adata: AnnData, groups, groupby: Optional[str] = None) -> np.
             groups = valid if groups is None or len(groups) != len(c) else groups & valid
 
     # Flatten the groups array if it's a list or array
-    groups = (
-        np.ravel(groups)
-        if isinstance(groups, (list, tuple, np.ndarray, np.record))
-        else None
-    )
+    groups = np.ravel(groups) if isinstance(groups, (list, tuple, np.ndarray, np.record)) else None
     return groups
 
 
 def gets_vals_from_color_gradients(
-    adata: AnnData, color: Optional[str] = None, **scatter_kwargs
-) -> Tuple[np.ndarray, List[str], str, dict]:
+    adata: AnnData, color: str | None = None, **scatter_kwargs
+) -> tuple[np.ndarray, list[str], str, dict]:
     """
     Extract values from color gradients and update scatter plot settings.
 
-    Parameters:
+    Parameters
+    ----------
         adata: AnnData
             The AnnData object containing the data.
         color: Optional[str]
@@ -612,7 +612,8 @@ def gets_vals_from_color_gradients(
         scatter_kwargs: dict
             Additional keyword arguments for the scatter plot.
 
-    Returns:
+    Returns
+    -------
         Tuple[np.ndarray, List[str], str, dict]:
             - vals: The extracted values from the color gradients.
             - names: The names of the color gradient categories.
@@ -632,7 +633,7 @@ def gets_vals_from_color_gradients(
         scatter_kwargs["s"] = default_size(adata) if size is None else size
 
     # Set default vmid if vmin, vmax, or vmid are not provided
-    if not any([v in scatter_kwargs for v in ["vmin", "vmax", "vmid"]]):
+    if not any(v in scatter_kwargs for v in ["vmin", "vmax", "vmid"]):
         scatter_kwargs["vmid"] = 0
 
     # Handle color gradients from adata.obsm or adata.obs
@@ -640,13 +641,8 @@ def gets_vals_from_color_gradients(
         if color is None:
             color = color_gradients
         color_gradients = adata.obsm[color_gradients]
-    elif (
-        isinstance(color_gradients, (list, tuple))
-        and color_gradients[0] in adata.obs.keys()
-    ):
-        color_gradients = pd.DataFrame(
-            np.stack([adata.obs[c] for c in color_gradients]).T, columns=color_gradients
-        )
+    elif isinstance(color_gradients, (list, tuple)) and color_gradients[0] in adata.obs.keys():
+        color_gradients = pd.DataFrame(np.stack([adata.obs[c] for c in color_gradients]).T, columns=color_gradients)
 
     # Set default color if not provided
     if color is None:
@@ -662,33 +658,31 @@ def gets_vals_from_color_gradients(
     vals = np.clip(pd_colgrad.values, 0, None)
 
     # Extract names from color gradients
-    names = (
-        color_gradients.names
-        if hasattr(color_gradients, "names")
-        else pd_colgrad.columns
-    )
+    names = color_gradients.names if hasattr(color_gradients, "names") else pd_colgrad.columns
 
     # Update adata.obs with categorical data for the color key
-    adata.obs[color] = pd.Categorical(
-        [f"{names[i]}" for i in np.argmax(vals, 1)], categories=names
-    )
+    adata.obs[color] = pd.Categorical([f"{names[i]}" for i in np.argmax(vals, 1)], categories=names)
     set_colors_for_categorical_obs(adata, color, palette)
 
     return vals, names, color, scatter_kwargs
 
+
 """get default parameters"""
 
-def default_basis(adata: AnnData, **kwargs) -> Optional[str]:
+
+def default_basis(adata: AnnData, **kwargs) -> str | None:
     """
     Determine the default basis for plotting based on available embeddings.
 
-    Parameters:
+    Parameters
+    ----------
         adata: AnnData
             The AnnData object containing the data.
         **kwargs: dict
             Additional keyword arguments. If 'x' and 'y' are provided, a custom embedding is created.
 
-    Returns:
+    Returns
+    -------
         Optional[str]: The default basis to use for plotting. If no basis is found, returns None.
     """
     if "x" in kwargs and "y" in kwargs:
@@ -697,9 +691,7 @@ def default_basis(adata: AnnData, **kwargs) -> Optional[str]:
         if "velocity_embedding" in adata.obsm.keys():
             del adata.obsm["velocity_embedding"]
     else:
-        keys = [
-            key for key in ["pca", "tsne", "umap"] if f"X_{key}" in adata.obsm.keys()
-        ]
+        keys = [key for key in ["pca", "tsne", "umap"] if f"X_{key}" in adata.obsm.keys()]
 
     if not keys:
         raise ValueError("No basis specified.")
@@ -711,30 +703,32 @@ def default_size(adata: AnnData) -> float:
     """
     Calculate the default size for scatter plot points based on the number of observations.
 
-    Parameters:
+    Parameters
+    ----------
         adata: AnnData
             The AnnData object containing the data.
 
-    Returns:
+    Returns
+    -------
         float: The default size for scatter plot points.
     """
     adjusted, classic = 1.2e5 / adata.n_obs, 20
-    return (
-        np.mean([adjusted, classic])
-    )
+    return np.mean([adjusted, classic])
 
 
-def default_color(adata: AnnData, add_outline: Optional[str] = None) -> str:
+def default_color(adata: AnnData, add_outline: str | None = None) -> str:
     """
     Determine the default color key for plotting.
 
-    Parameters:
+    Parameters
+    ----------
         adata: AnnData
             The AnnData object containing the data.
         add_outline: Optional[str]
             If provided, checks if it is a valid key in `adata.var` and `adata.uns`.
 
-    Returns:
+    Returns
+    -------
         str: The default color key to use for plotting.
     """
     if (
@@ -745,26 +739,22 @@ def default_color(adata: AnnData, add_outline: Optional[str] = None) -> str:
     ):
         return adata.uns["recover_dynamics"][add_outline]
 
-    return (
-        "clusters"
-        if "clusters" in adata.obs.keys()
-        else "louvain"
-        if "louvain" in adata.obs.keys()
-        else "grey"
-    )
+    return "clusters" if "clusters" in adata.obs.keys() else "louvain" if "louvain" in adata.obs.keys() else "grey"
 
 
-def default_color_map(adata: AnnData, c) -> Optional[str]:
+def default_color_map(adata: AnnData, c) -> str | None:
     """
     Determine the default color map based on the input data.
 
-    Parameters:
+    Parameters
+    ----------
         adata: AnnData
             The AnnData object containing the data.
         c: Union[str, int, np.ndarray]
             The input data for determining the color map.
 
-    Returns:
+    Returns
+    -------
         Optional[str]: The default color map to use. If no suitable map is found, returns None.
     """
     cmap = None
@@ -784,13 +774,12 @@ def default_color_map(adata: AnnData, c) -> Optional[str]:
     return cmap
 
 
-def default_legend_loc(
-    adata: AnnData, color: str, legend_loc: Optional[Union[str, bool]] = None
-) -> str:
+def default_legend_loc(adata: AnnData, color: str, legend_loc: str | bool | None = None) -> str:
     """
     Determine the default legend location based on the number of categories.
 
-    Parameters:
+    Parameters
+    ----------
         adata: AnnData
             The AnnData object containing the data.
         color: str
@@ -798,7 +787,8 @@ def default_legend_loc(
         legend_loc: Optional[Union[str, bool]]
             The desired legend location. If None, it is inferred based on the number of categories.
 
-    Returns:
+    Returns
+    -------
         str: The default legend location.
     """
     n_categories = 0
@@ -817,30 +807,32 @@ def default_xkey(adata: AnnData, use_raw: bool) -> str:
     """
     Determine the default key for the x-axis data.
 
-    Parameters:
+    Parameters
+    ----------
         adata: AnnData
             The AnnData object containing the data.
         use_raw: bool
             Whether to use raw data.
 
-    Returns:
+    Returns
+    -------
         str: The default key for the x-axis data.
     """
-    use_raw = "spliced" in adata.layers.keys() and (
-        use_raw or "Ms" not in adata.layers.keys()
-    )
+    use_raw = "spliced" in adata.layers.keys() and (use_raw or "Ms" not in adata.layers.keys())
     return "spliced" if use_raw else "Ms" if "Ms" in adata.layers.keys() else "X"
 
 
-def default_arrow(size: Union[float, List[float], Tuple[float]]) -> Tuple[float, float, float]:
+def default_arrow(size: float | list[float] | tuple[float]) -> tuple[float, float, float]:
     """
     Calculate the default arrow size for quiver plots.
 
-    Parameters:
+    Parameters
+    ----------
         size: Union[float, List[float], Tuple[float]]
             The input size for the arrow. If a single float, it scales the default arrow size.
 
-    Returns:
+    Returns
+    -------
         Tuple[float, float, float]: The default arrow size (head_length, head_width, ax_length).
     """
     if isinstance(size, (list, tuple)) and len(size) == 3:
@@ -858,18 +850,19 @@ def default_arrow(size: Union[float, List[float], Tuple[float]]) -> Tuple[float,
 
 def update_axes(
     ax,
-    xlim: Optional[Tuple[float, float]] = None,
-    ylim: Optional[Tuple[float, float]] = None,
-    fontsize: Optional[int] = None,
+    xlim: tuple[float, float] | None = None,
+    ylim: tuple[float, float] | None = None,
+    fontsize: int | None = None,
     is_embedding: bool = False,
-    frameon: Optional[Union[bool, str]] = None,
-    figsize: Optional[Tuple[float, float]] = None,
+    frameon: bool | str | None = None,
+    figsize: tuple[float, float] | None = None,
     aspect: str = "auto",
 ):
     """
     Update the axes properties for better visualization.
 
-    Parameters:
+    Parameters
+    ----------
         ax: matplotlib.axes.Axes
             The axes object to update.
         xlim: Optional[Tuple[float, float]]
@@ -945,11 +938,12 @@ def update_axes(
         ax.patch.set_alpha(0)
 
 
-def set_artist_frame(ax, length: float = 0.2, figsize: Optional[Tuple[float, float]] = None):
+def set_artist_frame(ax, length: float = 0.2, figsize: tuple[float, float] | None = None):
     """
     Set a custom artist frame for the axes.
 
-    Parameters:
+    Parameters
+    ----------
         ax: matplotlib.axes.Axes
             The axes object to update.
         length: float
@@ -995,15 +989,16 @@ def set_artist_frame(ax, length: float = 0.2, figsize: Optional[Tuple[float, flo
 def set_label(
     xlabel: str,
     ylabel: str,
-    fontsize: Optional[int] = None,
-    basis: Optional[str] = None,
+    fontsize: int | None = None,
+    basis: str | None = None,
     ax=None,
     **kwargs,
 ):
     """
     Set the x and y labels for the axes.
 
-    Parameters:
+    Parameters
+    ----------
         xlabel: str
             The label for the x-axis.
         ylabel: str
@@ -1051,15 +1046,16 @@ def set_label(
 
 def set_title(
     title: str,
-    layer: Optional[str] = None,
-    color: Optional[str] = None,
-    fontsize: Optional[int] = None,
+    layer: str | None = None,
+    color: str | None = None,
+    fontsize: int | None = None,
     ax=None,
 ):
     """
     Set the title for the axes.
 
-    Parameters:
+    Parameters
+    ----------
         title: str
             The title text.
         layer: Optional[str]
@@ -1085,11 +1081,12 @@ def set_title(
     ax.set_title(title, fontsize=fontsize)
 
 
-def set_frame(ax, frameon: Optional[bool] = None):
+def set_frame(ax, frameon: bool | None = None):
     """
     Set the frame visibility for the axes.
 
-    Parameters:
+    Parameters
+    ----------
         ax: matplotlib.axes.Axes
             The axes object to update.
         frameon: Optional[bool]
@@ -1108,16 +1105,17 @@ def set_legend(
     value_to_plot: str,
     legend_loc: str,
     scatter_array: np.ndarray,
-    legend_fontweight: Optional[str] = None,
-    legend_fontsize: Optional[int] = None,
-    legend_fontoutline: Optional[int] = None,
-    legend_align_text: Optional[Union[bool, str]] = None,
-    groups: Optional[List[str]] = None,
+    legend_fontweight: str | None = None,
+    legend_fontsize: int | None = None,
+    legend_fontoutline: int | None = None,
+    legend_align_text: bool | str | None = None,
+    groups: list[str] | None = None,
 ):
     """
     Add a legend to the axes for categorical data.
 
-    Parameters:
+    Parameters
+    ----------
         adata: AnnData
             The AnnData object containing the data.
         ax: matplotlib.axes.Axes
@@ -1196,11 +1194,12 @@ def set_legend(
             ax.legend(loc=legend_loc, **kwargs)
 
 
-def set_margin(ax, x: np.ndarray, y: np.ndarray, add_margin: Union[bool, float]):
+def set_margin(ax, x: np.ndarray, y: np.ndarray, add_margin: bool | float):
     """
     Set the margin around the data points in the axes.
 
-    Parameters:
+    Parameters
+    ----------
         ax: matplotlib.axes.Axes
             The axes object to update.
         x: np.ndarray
@@ -1219,17 +1218,19 @@ def set_margin(ax, x: np.ndarray, y: np.ndarray, add_margin: Union[bool, float])
     ax.set_ylim(ymin - ymargin, ymax + ymargin)
 
 
-def clip(c: np.ndarray, perc: Union[int, List[int]]) -> np.ndarray:
+def clip(c: np.ndarray, perc: int | list[int]) -> np.ndarray:
     """
     Clip the values of an array to a specified percentile range.
 
-    Parameters:
+    Parameters
+    ----------
         c: np.ndarray
             The array to clip.
         perc: Union[int, List[int]]
             The percentile range to clip to. If a single value is provided, it is converted to a range.
 
-    Returns:
+    Returns
+    -------
         np.ndarray: The clipped array.
     """
     if np.size(perc) < 2:
@@ -1242,13 +1243,15 @@ def get_colors(adata: AnnData, c: str) -> np.ndarray:
     """
     Get the color values for a categorical observation.
 
-    Parameters:
+    Parameters
+    ----------
         adata: AnnData
             The AnnData object containing the data.
         c: str
             The key for the categorical observation.
 
-    Returns:
+    Returns
+    -------
         np.ndarray: The color values for the observation.
     """
     if is_color_like(c):
@@ -1265,9 +1268,7 @@ def get_colors(adata: AnnData, c: str) -> np.ndarray:
             cluster_ix = adata.obs[c].cat.codes.values
         return np.array(
             [
-                adata.uns[f"{c}_colors"][cluster_ix[i]]
-                if cluster_ix[i] != -1
-                else "lightgrey"
+                adata.uns[f"{c}_colors"][cluster_ix[i]] if cluster_ix[i] != -1 else "lightgrey"
                 for i in range(adata.n_obs)
             ]
         )
@@ -1275,15 +1276,16 @@ def get_colors(adata: AnnData, c: str) -> np.ndarray:
 
 def interpret_colorkey(
     adata: AnnData,
-    c: Optional[Union[str, np.ndarray]] = None,
-    layer: Optional[str] = None,
-    perc: Optional[Union[int, List[int]]] = None,
-    use_raw: Optional[bool] = None,
+    c: str | np.ndarray | None = None,
+    layer: str | None = None,
+    perc: int | list[int] | None = None,
+    use_raw: bool | None = None,
 ) -> np.ndarray:
     """
     Interpret the color key and return the corresponding color values.
 
-    Parameters:
+    Parameters
+    ----------
         adata: AnnData
             The AnnData object containing the data.
         c: Optional[Union[str, np.ndarray]]
@@ -1295,7 +1297,8 @@ def interpret_colorkey(
         use_raw: Optional[bool]
             Whether to use raw data.
 
-    Returns:
+    Returns
+    -------
         np.ndarray: The interpreted color values.
     """
     if c is None:
@@ -1309,28 +1312,17 @@ def interpret_colorkey(
             pass
         elif c in adata.obs.keys():
             c = adata.obs[c]
-        elif c in adata.var_names or (
-            use_raw and adata.raw is not None and c in adata.raw.var_names
-        ):
+        elif c in adata.var_names or (use_raw and adata.raw is not None and c in adata.raw.var_names):
             if layer in adata.layers.keys():
                 if perc is None and any(
-                    layer_name in layer
-                    for layer_name in ["spliced", "unspliced", "Ms", "Mu", "velocity"]
+                    layer_name in layer for layer_name in ["spliced", "unspliced", "Ms", "Mu", "velocity"]
                 ):
                     perc = [1, 99]
                 c = adata.obs_vector(c, layer=layer)
             elif layer is not None and np.any(
-                [
-                    layer_name in layer or "X" in layer
-                    for layer_name in adata.layers.keys()
-                ]
+                [layer_name in layer or "X" in layer for layer_name in adata.layers.keys()]
             ):
-                l_array = np.hstack(
-                    [
-                        adata.obs_vector(c, layer=layer)[:, None]
-                        for layer in adata.layers.keys()
-                    ]
-                )
+                l_array = np.hstack([adata.obs_vector(c, layer=layer)[:, None] for layer in adata.layers.keys()])
                 l_array = pd.DataFrame(l_array, columns=adata.layers.keys())
                 l_array.insert(0, "X", adata.obs_vector(c))
                 c = np.array(l_array.astype(np.float32).eval(layer))
@@ -1344,21 +1336,15 @@ def interpret_colorkey(
         elif c in adata.var.keys():
             c = adata.var[c]
         elif np.any([var_key in c for var_key in adata.var.keys()]):
-            var_keys = [
-                k for k in adata.var.keys() if not isinstance(adata.var[k][0], str)
-            ]
+            var_keys = [k for k in adata.var.keys() if not isinstance(adata.var[k][0], str)]
             var = adata.var[list(var_keys)]
             c = var.astype(np.float32).eval(c)
         elif np.any([obs_key in c for obs_key in adata.obs.keys()]):
-            obs_keys = [
-                k for k in adata.obs.keys() if not isinstance(adata.obs[k][0], str)
-            ]
+            obs_keys = [k for k in adata.obs.keys() if not isinstance(adata.obs[k][0], str)]
             obs = adata.obs[list(obs_keys)]
             c = obs.astype(np.float32).eval(c)
         elif not is_color_like(c):
-            raise ValueError(
-                "color key is invalid! pass valid observation annotation or a gene name"
-            )
+            raise ValueError("color key is invalid! pass valid observation annotation or a gene name")
         if not isinstance(c, str) and perc is not None:
             c = clip(c, perc=perc)
     else:
@@ -1368,13 +1354,12 @@ def interpret_colorkey(
     return c
 
 
-def set_colors_for_categorical_obs(
-    adata: AnnData, value_to_plot: str, palette: Optional[Union[str, List[str]]] = None
-):
+def set_colors_for_categorical_obs(adata: AnnData, value_to_plot: str, palette: str | list[str] | None = None):
     """
     Set the color palette for a categorical observation in the AnnData object.
 
-    Parameters:
+    Parameters
+    ----------
         adata: AnnData
             The AnnData object containing the data.
         value_to_plot: str
@@ -1391,9 +1376,7 @@ def set_colors_for_categorical_obs(
         palette = default_26 if length <= 28 else default_64
     if isinstance(palette, str) and palette in adata.uns:
         palette = (
-            [adata.uns[palette][c] for c in categories]
-            if isinstance(adata.uns[palette], dict)
-            else adata.uns[palette]
+            [adata.uns[palette][c] for c in categories] if isinstance(adata.uns[palette], dict) else adata.uns[palette]
         )
     if palette is None and color_key in adata.uns:
         color_keys = adata.uns[color_key]
@@ -1420,6 +1403,7 @@ def set_colors_for_categorical_obs(
         if isinstance(palette, str) and palette in plt.colormaps():
             cmap = plt.get_cmap(palette)
             import matplotlib.colors as mcolors
+
             # colors_list = [np.to_hex(x) for x in cmap(np.linspace(0, 1, length))]
             colors_list = [mcolors.to_hex(x) for x in cmap(np.linspace(0, 1, length))]
         else:
@@ -1428,7 +1412,7 @@ def set_colors_for_categorical_obs(
                     cats = pd.Categorical(adata.obs[value_to_plot])
                     colors = pd.Categorical(palette)
                     if len(cats) == len(colors):
-                        palette = dict(zip(cats, colors))
+                        palette = dict(zip(cats, colors, strict=False))
             if isinstance(palette, dict):
                 palette = [palette[c] for c in categories]
             if isinstance(palette, abc.Sequence):
@@ -1489,13 +1473,12 @@ def set_colors_for_categorical_obs(
         adata.uns[f"{value_to_plot}_colors"] = palette[:length]
 
 
-def set_colorbar(
-    smp, ax, orientation: str = "vertical", labelsize: Optional[int] = None
-):
+def set_colorbar(smp, ax, orientation: str = "vertical", labelsize: int | None = None):
     """
     Add a colorbar to the axes.
 
-    Parameters:
+    Parameters
+    ----------
         smp: matplotlib.cm.ScalarMappable
             The ScalarMappable object to use for the colorbar.
         ax: matplotlib.axes.Axes
@@ -1513,15 +1496,17 @@ def set_colorbar(
     cb.update_ticks()
 
 
-def default_palette(palette: Optional[Union[str, List[str], Cycler]] = None) -> Cycler:
+def default_palette(palette: str | list[str] | Cycler | None = None) -> Cycler:
     """
     Get the default color palette.
 
-    Parameters:
+    Parameters
+    ----------
         palette: Optional[Union[str, List[str], Cycler]]
             The palette to use. If None, the default palette is used.
 
-    Returns:
+    Returns
+    -------
         Cycler: The default color palette.
     """
     if palette is None:
@@ -1532,17 +1517,19 @@ def default_palette(palette: Optional[Union[str, List[str], Cycler]] = None) -> 
         return palette
 
 
-def adjust_palette(palette: Union[List[str], Cycler], length: int) -> Union[List[str], Cycler]:
+def adjust_palette(palette: list[str] | Cycler, length: int) -> list[str] | Cycler:
     """
     Adjust the color palette to match the required length.
 
-    Parameters:
+    Parameters
+    ----------
         palette: Union[List[str], Cycler]
             The palette to adjust.
         length: int
             The required length of the palette.
 
-    Returns:
+    Returns
+    -------
         Union[List[str], Cycler]: The adjusted palette.
     """
     islist = False
@@ -1568,12 +1555,13 @@ def adjust_palette(palette: Union[List[str], Cycler], length: int) -> Union[List
 
 
 def rgb_custom_colormap(
-    colors: Optional[List[str]] = None, alpha: Optional[List[float]] = None, N: int = 256
+    colors: list[str] | None = None, alpha: list[float] | None = None, N: int = 256
 ) -> ListedColormap:
     """
     Create a custom colormap from a list of colors.
 
-    Parameters:
+    Parameters
+    ----------
         colors: Optional[List[str]]
             The list of colors to use. If None, a default palette is used.
         alpha: Optional[List[float]]
@@ -1581,7 +1569,8 @@ def rgb_custom_colormap(
         N: int
             The number of colors in the colormap.
 
-    Returns:
+    Returns
+    -------
         ListedColormap: The custom colormap.
     """
     if colors is None:
@@ -1615,13 +1604,12 @@ def rgb_custom_colormap(
 """setup scParams"""
 
 
-def _setup_rc_params(context: Optional[str], default_context: Optional[dict], font_scale: Optional[float], theme: Optional[str]):
+def _setup_rc_params(context: str | None, default_context: dict | None, font_scale: float | None, theme: str | None):
     """Set up rcParams for plotting."""
     rc_params = default_context.copy() if default_context is not None else DEFAULT_CONTEXT.copy()
-    
+
     # Validate and load fonts
 
-    
     if context:
         rc_params.update(sns.plotting_context(context))
     if theme:
@@ -1658,8 +1646,9 @@ def _validate_and_load_fonts(font_list: list[str], font_dir: str = "data/fonts")
         Updated list of all available font names matching the families.
     """
     # Get system available fonts for quick lookup
-    import matplotlib.font_manager as fm
     from importlib.resources import files
+
+    import matplotlib.font_manager as fm
 
     available_fonts = {f.name for f in fm.fontManager.ttflist}
     valid_fonts = set()
@@ -1686,19 +1675,19 @@ def _validate_and_load_fonts(font_list: list[str], font_dir: str = "data/fonts")
                 try:
                     # Get the actual font name from the file's metadata
                     font_name = fm.FontProperties(fname=str(font_file)).get_name()
-                    
+
                     # If not in the system, add it
                     if font_name not in available_fonts:
                         fm.fontManager.addfont(str(font_file))
-                        available_fonts.add(font_name) # Update our set of known fonts
+                        available_fonts.add(font_name)  # Update our set of known fonts
                         logg.debug(f"Loaded font '{font_name}' from {font_file}")
-                    
+
                     # Add the verified font name to our results
                     valid_fonts.add(font_name)
                     found_match = True
                 except Exception as e:
                     logg.warning(f"Failed to load or read font {font_file}: {e}")
-        
+
         # 2. Check for any matching system fonts that might not have been in the package
         for sys_font in available_fonts:
             if sys_font.startswith(font_prefix):
@@ -1708,7 +1697,7 @@ def _validate_and_load_fonts(font_list: list[str], font_dir: str = "data/fonts")
         if not found_match:
             logg.warning(f"Font family '{font_prefix}' not found in system or package directory.")
 
-    final_font_list = sorted(list(valid_fonts))
+    final_font_list = sorted(valid_fonts)
 
     # 3. Ensure at least one fallback font if nothing was found
     if not final_font_list:
@@ -1722,11 +1711,11 @@ def _validate_and_load_fonts(font_list: list[str], font_dir: str = "data/fonts")
 
 
 def savefig_or_show(
-    writekey: Optional[str] = None,
-    show: Optional[bool] = None,
-    dpi: Optional[int] = None,
-    ext: Optional[str] = None,
-    save: Optional[Union[bool, str]] = None,
+    writekey: str | None = None,
+    show: bool | None = None,
+    dpi: int | None = None,
+    ext: str | None = None,
+    save: bool | str | None = None,
 ):
     """
     Save the current figure or show it, depending on the settings.
@@ -1763,9 +1752,7 @@ def savefig_or_show(
         # Append the writekey if provided
         if "/" in save:
             writekey = None
-        writekey = (
-            f"{writekey}_{save}" if writekey is not None and len(writekey) > 0 else save
-        )
+        writekey = f"{writekey}_{save}" if writekey is not None and len(writekey) > 0 else save
         save = True
 
     save = False if save is None else save
@@ -1774,10 +1761,7 @@ def savefig_or_show(
     if save:
         if dpi is None:
             # Needed in notebooks because internal figures are also influenced by 'savefig.dpi'
-            if (
-                not isinstance(rcParams["savefig.dpi"], str)
-                and rcParams["savefig.dpi"] < 150
-            ):
+            if not isinstance(rcParams["savefig.dpi"], str) and rcParams["savefig.dpi"] < 150:
                 if settings._low_resolution_warning:
                     logg.warn(
                         "You are using a low resolution (dpi<150) for saving figures.\n"
@@ -1818,7 +1802,7 @@ def savefig_or_show(
         #     )
         #     logg.info(logg_message, v=1)
         plt.savefig(filename, dpi=dpi, bbox_inches="tight")
-        logg.info(f"💾 Saving figure to file {filename}" )
+        logg.info(f"💾 Saving figure to file {filename}")
 
     if show:
         plt.show()
@@ -1826,7 +1810,9 @@ def savefig_or_show(
     if save:
         plt.close()  # Clear the figure
 
+
 ## Data processing
+
 
 def gam_fit_predict(x, y, weights=None, pred_x=None, n_splines=4, spline_order=2):
     """
@@ -1840,6 +1826,7 @@ def gam_fit_predict(x, y, weights=None, pred_x=None, n_splines=4, spline_order=2
     :param spline_order: Order of spline to use. Must be non-negative.
     """
     from pygam import LinearGAM, s
+
     # Weights
     if weights is None:
         weights = np.repeat(1.0, len(x))
@@ -1861,33 +1848,27 @@ def gam_fit_predict(x, y, weights=None, pred_x=None, n_splines=4, spline_order=2
     p = gam.predict(x[use_inds])
     n = len(use_inds)
     sigma = np.sqrt(((y[use_inds] - p) ** 2).sum() / (n - 2))
-    stds = (
-        np.sqrt(1 + 1 / n + (pred_x - np.mean(x)) ** 2 / ((x - np.mean(x)) ** 2).sum())
-        * sigma
-        / 2
-    )
+    stds = np.sqrt(1 + 1 / n + (pred_x - np.mean(x)) ** 2 / ((x - np.mean(x)) ** 2).sum()) * sigma / 2
 
     return y_pred, stds
+
 
 def _gam(df, time_sorted, time_sorted_bins, n_splines, new_index, log1p_norm=False):
     """
     Smooth data using Generalized Additive Model (GAM).
-    
+
     Returns two DataFrames: one for predictions and one for standard deviations.
     """
     df_s_pred = pd.DataFrame(index=new_index, columns=df.columns)
     df_s_stds = pd.DataFrame(index=new_index, columns=df.columns)
 
     for gene in df.columns:
-
-
-        y_pred, stds = gam_fit_predict(
-            x=time_sorted, y=df[gene].values, pred_x=time_sorted_bins, n_splines=n_splines
-        )
+        y_pred, stds = gam_fit_predict(x=time_sorted, y=df[gene].values, pred_x=time_sorted_bins, n_splines=n_splines)
         df_s_pred[gene] = y_pred
         df_s_stds[gene] = stds
-        
+
     return df_s_pred, df_s_stds
+
 
 def _convolve(df, time_sorted, n_convolve):
     """Smooth data using convolution."""
@@ -1900,6 +1881,7 @@ def _convolve(df, time_sorted, n_convolve):
             logg.info(f"Skipping variable {gene}: {e}")
     return df_s
 
+
 def _polyfit(df, time_sorted, time_sorted_bins, n_deg):
     """Smooth data using polynomial fitting."""
     df_s = pd.DataFrame(index=time_sorted_bins, columns=df.columns)
@@ -1909,9 +1891,6 @@ def _polyfit(df, time_sorted, time_sorted_bins, n_deg):
     return df_s
 
 
-
-
-import math
 def find_indices(series: pd.Series, values) -> list[int]:
     def find_nearest(array: np.ndarray, value: float) -> int:
         ix = np.searchsorted(array, value, side="left")
@@ -1922,9 +1901,8 @@ def find_indices(series: pd.Series, values) -> list[int]:
     series = series.sort_values(ascending=True)
     return list(series.iloc[[find_nearest(series.values, v) for v in values]].index)
 
-def plot_outline(
-    x, y, kwargs, outline_width=None, outline_color=None, zorder=None, ax=None
-):
+
+def plot_outline(x, y, kwargs, outline_width=None, outline_color=None, zorder=None, ax=None):
     """TODO."""
     # Adapted from scanpy. The default outline is a black edge
     # followed by a thin white edged added around connected clusters.
@@ -1973,19 +1951,19 @@ def _format_title(title: str) -> str:
     # If no underscore is found, return the original title as is.
     if "_" not in title:
         return title
-    
+
     main_part = title
     paren_part = ""
 
     # Separate the main title from the part in parentheses
     match = re.search(r"\s*\(([^)]+)\)", title)
     if match:
-        main_part = title[:match.start()]
+        main_part = title[: match.start()]
         # Format the parenthesis content to lowercase
         paren_part = f" ({match.group(1).lower()})"
 
     # Process the main part of the title
-    words = main_part.split('_')
+    words = main_part.split("_")
     processed_words = []
     for word in words:
         if not word:
@@ -1996,19 +1974,18 @@ def _format_title(title: str) -> str:
         # For words starting with digits or containing mixed case, keep as is
         else:
             processed_words.append(word)
-            
+
     formatted_main = " ".join(processed_words)
-    
+
     # Combine the processed main part and the parenthesis part
     return formatted_main + paren_part
-
 
 
 def _label_features(
     ax: plt.Axes,
     x_coords: pd.Series,
     y_coords: pd.Series,
-    labels_to_plot: List[str],
+    labels_to_plot: list[str],
     font_scale: float = 1.0,
     x_offset_base: float = 0.02,
     y_offset_base: float = 0.05,
@@ -2040,17 +2017,18 @@ def _label_features(
         Additional keyword arguments passed to `ax.text()`.
     """
     from adjustText import adjust_text
+
     texts = []
     x_range = ax.get_xlim()[1] - ax.get_xlim()[0]
     y_range = ax.get_ylim()[1] - ax.get_ylim()[0]
 
     # Default text properties, can be overridden by kwargs
     text_defaults = {
-        'fontsize': 8 * font_scale,
-        'color': "black",
-        'alpha': 1,
-        'fontstyle': "normal",
-        'bbox': dict(facecolor="white", edgecolor="black", boxstyle="round,pad=0.5", alpha=1)
+        "fontsize": 8 * font_scale,
+        "color": "black",
+        "alpha": 1,
+        "fontstyle": "normal",
+        "bbox": dict(facecolor="white", edgecolor="black", boxstyle="round,pad=0.5", alpha=1),
     }
     text_defaults.update(kwargs)
 
@@ -2068,7 +2046,7 @@ def _label_features(
             text = ax.text(label_x, label_y, f"{label}", **text_defaults)
             texts.append(text)
             ax.plot([x_point, label_x], [y_point, label_y], color="black", linestyle="--", linewidth=1)
-    
+
     # Adjust text to avoid overlaps
     if texts:
         adjust_text(texts, ax=ax)

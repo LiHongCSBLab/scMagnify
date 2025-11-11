@@ -1,31 +1,36 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 import os
 import subprocess
+from typing import TYPE_CHECKING
+
+import matplotlib as mpl
+import matplotlib.gridspec as gridspec
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pyranges as pr
 import seaborn as sns
-import matplotlib as mpl
-import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
-from matplotlib.patches import Rectangle, Arc
 from matplotlib.collections import PatchCollection
+from matplotlib.patches import Arc, Rectangle
 
-from scmagnify import settings, logging as logg
-from scmagnify.plotting._utils import savefig_or_show, _setup_rc_params, _format_title
-from scmagnify.plotting._docs import doc_params, GROUPS as _G
-from scmagnify.utils import _get_data_modal, _validate_varm_key, _get_X
+from scmagnify import logging as logg
+from scmagnify import settings
+from scmagnify.plotting._docs import GROUPS as _G
+from scmagnify.plotting._docs import doc_params
+from scmagnify.plotting._utils import _setup_rc_params, savefig_or_show
+from scmagnify.utils import _get_data_modal, _get_X
 
 if TYPE_CHECKING:
-    from typing import Literal, Union, Optional, List, Dict
+    from typing import Literal
+
     from anndata import AnnData
     from mudata import MuData
+
     from scmagnify import GRNMuData
 
 __all__ = ["coverageplot"]
+
 
 def _pyranges_from_strings(pos_list: pd.Series) -> pr.PyRanges:
     """Convert position strings to PyRanges object."""
@@ -34,6 +39,7 @@ def _pyranges_from_strings(pos_list: pd.Series) -> pr.PyRanges:
     end = pos_list.str.split(":").str.get(1).str.split("-").str.get(1).astype(int)
     return pr.PyRanges(chromosomes=chr, starts=start, ends=end)
 
+
 def _pyranges_to_strings(peaks: pr.PyRanges) -> np.ndarray:
     """Convert PyRanges peaks to position strings."""
     chr = peaks.Chromosome.astype(str).values
@@ -41,15 +47,16 @@ def _pyranges_to_strings(peaks: pr.PyRanges) -> np.ndarray:
     end = peaks.End.astype(str).values
     return chr + ":" + start + "-" + end
 
+
 def compute_coverage(
     adata: AnnData,
-    fragment_files: Dict[str, str],
+    fragment_files: dict[str, str],
     region: str,
     barcodes: pd.Series,
     out_prefix: str,
-    smooth: Optional[int] = None,
+    smooth: int | None = None,
     normalize: bool = False,
-    frag_type: str = "All"
+    frag_type: str = "All",
 ) -> pd.Series:
     """Compute coverage for a given region and barcodes."""
     import tabix
@@ -73,8 +80,7 @@ def compute_coverage(
 
     with open(f"{out_prefix}.coverage.bed", "w") as out_file:
         subprocess.call(
-            ["bedtools", "coverage", "-a", f"{out_prefix}.region.bed", "-b", f"{out_prefix}.bed", "-d"],
-            stdout=out_file
+            ["bedtools", "coverage", "-a", f"{out_prefix}.region.bed", "-b", f"{out_prefix}.bed", "-d"], stdout=out_file
         )
 
     df = pd.read_csv(f"{out_prefix}.coverage.bed", sep="\t", header=None)
@@ -100,16 +106,17 @@ def compute_coverage(
 
     return coverage
 
+
 def _plot_coverage(
     coverage: pd.Series,
     track_name: str = "Coverage",
-    ax: Optional[plt.Axes] = None,
+    ax: plt.Axes | None = None,
     color: str = "#ff7f00",
     min_coverage: float = 0,
-    ylim: Optional[List[float]] = None,
+    ylim: list[float] | None = None,
     fill: bool = True,
     linestyle: str = "-",
-    y_font: Optional[int] = None
+    y_font: int | None = None,
 ) -> None:
     """Plot coverage track."""
     if ax is None:
@@ -129,24 +136,19 @@ def _plot_coverage(
     if ylim is not None:
         ax.set_ylim(ylim)
 
-    ax.set_ylabel(track_name, 
-                rotation=90, 
-                labelpad=10, 
-                y=0.5, x=-0.05)
-    
+    ax.set_ylabel(track_name, rotation=90, labelpad=10, y=0.5, x=-0.05)
+
     sns.despine(ax=ax, trim=True)
 
+
 def _plot_bed(
-    plot_peaks: pr.PyRanges,
-    track_name: str = "Bed",
-    ax: Optional[plt.Axes] = None,
-    facecolor: str = "#ff7f00"
+    plot_peaks: pr.PyRanges, track_name: str = "Bed", ax: plt.Axes | None = None, facecolor: str = "#ff7f00"
 ) -> None:
     """Plot BED track with peak rectangles."""
     if ax is None:
         ax = plt.gca()
 
-    rects = [Rectangle((s, -0.45), e - s, 0.9) for s, e in zip(plot_peaks.Start, plot_peaks.End)]
+    rects = [Rectangle((s, -0.45), e - s, 0.9) for s, e in zip(plot_peaks.Start, plot_peaks.End, strict=False)]
     ax.add_collection(PatchCollection(rects, facecolor=facecolor, edgecolor="black"))
     ax.set_ylim([-1, 1])
     ax.set_yticks([])
@@ -154,13 +156,14 @@ def _plot_bed(
     ax.axes.get_xaxis().set_visible(False)
     sns.despine(ax=ax, bottom=True)
 
+
 def _plot_gene(
     genes: pr.PyRanges,
-    ax: Optional[plt.Axes] = None,
-    track_name: Optional[str] = "Genes",
+    ax: plt.Axes | None = None,
+    track_name: str | None = "Genes",
     facecolor: str = "#377eb8",
     exon_height: float = 0.9,
-    utr_height: float = 0.4
+    utr_height: float = 0.4,
 ) -> None:
     """Plot gene track with exons and UTRs."""
     if ax is None:
@@ -174,108 +177,117 @@ def _plot_gene(
 
         utrs = gene_pr[gene_pr.Feature.astype(str).str.contains("utr")]
         if len(utrs) > 0:
-            rects = [Rectangle((s, -utr_height / 2), e - s, utr_height) for s, e in zip(utrs.Start, utrs.End)]
+            rects = [
+                Rectangle((s, -utr_height / 2), e - s, utr_height) for s, e in zip(utrs.Start, utrs.End, strict=False)
+            ]
             ax.add_collection(PatchCollection(rects, facecolor=facecolor, edgecolor="black"))
 
         cds = gene_pr[gene_pr.Feature.astype(str).str.contains("CDS")]
         if len(cds) == 0:
             cds = gene_pr[gene_pr.Feature.astype(str).str.contains("exon")]
-        rects = [Rectangle((s, -exon_height / 2), e - s, exon_height) for s, e in zip(cds.Start, cds.End)]
+        rects = [Rectangle((s, -exon_height / 2), e - s, exon_height) for s, e in zip(cds.Start, cds.End, strict=False)]
         ax.add_collection(PatchCollection(rects, facecolor=facecolor, edgecolor="black"))
 
         ax.text(
-            (gs + ge) / 2, 0.6, gene,
-            horizontalalignment="center", fontsize=10,
-            fontstyle="italic", fontweight="bold", family="Arial"
+            (gs + ge) / 2,
+            0.6,
+            gene,
+            horizontalalignment="center",
+            fontsize=10,
+            fontstyle="italic",
+            fontweight="bold",
+            family="Arial",
         )
 
     # ax.set_ylabel(track_name if track_name else "", rotation=90, labelpad=10)
     ax.set_yticks([])
     sns.despine(ax=ax)
 
+
 def _plot_links(links: pd.DataFrame, ax: plt.Axes) -> None:
     """Plot links track with arcs."""
-    for start, end, cor in zip(links["start"], links["end"], links["cor"]):
+    for start, end, cor in zip(links["start"], links["end"], links["cor"], strict=False):
         center = (start + end) / 2
         width = abs(center - start) * 2
         arc = Arc(
-            (center, 0), width, width, angle=0, theta1=180, theta2=360,
-            lw=1.25, color=sns.color_palette("Reds", as_cmap=True)(cor)
+            (center, 0),
+            width,
+            width,
+            angle=0,
+            theta1=180,
+            theta2=360,
+            lw=1.25,
+            color=sns.color_palette("Reds", as_cmap=True)(cor),
         )
         ax.add_patch(arc)
 
     ax.set_ylim([min(-abs((links["end"] + links["start"]) / 2 - links["start"])) - 100, 0])
     ax.set_axis_off()
 
-def _plot_violin(
-    df_melt: pd.DataFrame,
-    gene: str,
-    cluster_order: List[str],
-    colors: pd.Series,
-    ax: plt.Axes
-) -> None:
+
+def _plot_violin(df_melt: pd.DataFrame, gene: str, cluster_order: list[str], colors: pd.Series, ax: plt.Axes) -> None:
     """Plot a single horizontal violin plot for a given gene."""
-    plot_data = df_melt[df_melt['gene'] == gene]
-    
+    plot_data = df_melt[df_melt["gene"] == gene]
+
     # Plot the horizontal violins
     sns.violinplot(
-        x='expression',
-        y='celltype',
+        x="expression",
+        y="celltype",
         data=plot_data,
         order=cluster_order,
-        orient='h',
+        orient="h",
         palette=colors.to_dict(),
-        hue='celltype',
+        hue="celltype",
         legend=False,
         ax=ax,
-        inner='quartile',
-        linewidth=1.0
+        inner="quartile",
+        linewidth=1.0,
     )
-    
+
     # Style the plot
     ax.set_xlabel("Expression")
     ax.set_ylabel("")
-    ax.set_title(gene, fontsize=12, weight='bold')
-    
+    ax.set_title(gene, fontsize=12, weight="bold")
+
     # Create a secondary y-axis on the right for labels
     ax_right = ax.twinx()
     ax_right.set_ylim(ax.get_ylim())
     ax_right.set_yticks(np.arange(len(cluster_order)))
     ax_right.set_yticklabels(cluster_order)
-    
+
     # Clean up both axes
     for ax_obj in [ax, ax_right]:
-        ax_obj.tick_params(axis='y', length=0)
-        ax_obj.set_yticklabels([]) # Hide original labels
-    ax_right.set_yticklabels(cluster_order) # Re-apply to the right axis
-    
+        ax_obj.tick_params(axis="y", length=0)
+        ax_obj.set_yticklabels([])  # Hide original labels
+    ax_right.set_yticklabels(cluster_order)  # Re-apply to the right axis
+
     for spine in ax_right.spines.values():
         spine.set_visible(False)
-        
+
     sns.despine(ax=ax, left=True, bottom=False)
 
 
-@doc_params(general=_G["general"], coverage=_G["coverage"], labels=_G["labels"]) 
+@doc_params(general=_G["general"], coverage=_G["coverage"], labels=_G["labels"])
 def coverageplot(
-    data: Union[AnnData, MuData, GRNMuData],
+    data: AnnData | MuData | GRNMuData,
     modal: Literal["GRN", "RNA", "ATAC"] = "ATAC",
-    region: Optional[str] = None,
-    anchor_gene: Optional[str] = None,
+    region: str | None = None,
+    anchor_gene: str | None = None,
     anchor_flank: int = 50000,
-    cluster: Optional[str] = "celltype",
-    cluster_order: Optional[List[str]] = None,
-    cluster_colors: Optional[pd.DataFrame] = None,
-    delimiter: Optional[str] = "#",
-    peak_groups: Optional[pd.Series] = None,
-    gtf: Optional[pr.PyRanges] = None,
-    fragment_files: Optional[Dict[str, str]] = None,
-    links: Optional[Union[bool, pd.DataFrame]] = None,
-    genes: Optional[Union[List[str], pd.DataFrame]] = None,
-    highlight_peaks: Optional[pr.PyRanges] = None,
+    cluster: str | None = "celltype",
+    cluster_order: list[str] | None = None,
+    cluster_colors: pd.DataFrame | None = None,
+    delimiter: str | None = "#",
+    peak_groups: pd.Series | None = None,
+    gtf: pr.PyRanges | None = None,
+    fragment_files: dict[str, str] | None = None,
+    links: bool | pd.DataFrame | None = None,
+    genes: list[str] | pd.DataFrame | None = None,
+    highlight_peaks: pr.PyRanges | None = None,
     fig_width: float = 10.0,
     plot_cov_size: float = 1.0,
     plot_bed_size: float = 0.2,
-    y_font: Optional[int] = 12,
+    y_font: int | None = 12,
     frag_type: str = "All",
     min_coverage: float = 0,
     smooth: int = 75,
@@ -283,17 +295,17 @@ def coverageplot(
     common_scale: bool = False,
     collapsed: bool = False,
     side_modal: Literal["GRN", "RNA", "ATAC"] = "RNA",
-    side_layer: str = 'log1p_norm',
+    side_layer: str = "log1p_norm",
     side_width_ratio: float = 0.25,
-    side_genes: Optional[List[str]] = None,
+    side_genes: list[str] | None = None,
     side_plot_type: Literal["violin", "box"] = "violin",
-    context: Optional[str] = None,
-    default_context: Optional[dict] = None,
-    theme: Optional[str] = "ticks",
-    font_scale: Optional[float] = 1,
-    save: Optional[str] = None,
-    show: Optional[bool] = None
-) -> Optional[plt.Figure]:
+    context: str | None = None,
+    default_context: dict | None = None,
+    theme: str | None = "ticks",
+    font_scale: float | None = 1,
+    save: str | None = None,
+    show: bool | None = None,
+) -> plt.Figure | None:
     """Plot coverage with optional side expression violins/box plots.
 
     Parameters
@@ -374,7 +386,7 @@ def coverageplot(
 
         if cluster not in adata.obs.columns:
             raise ValueError(f"Cluster '{cluster}' not found in adata.obs.")
-        
+
         # Remove the cluster with cells < 5
         adata.obs[cluster] = adata.obs[cluster].astype("category")
         counts = adata.obs[cluster].value_counts()
@@ -419,7 +431,11 @@ def coverageplot(
             tss = gtf[(gtf.gene_name == anchor_gene) & (gtf.Feature == "gene")]
             if tss.empty:
                 raise ValueError(f"Gene {anchor_gene} not found in GTF.")
-            chr, start, end = tss.Chromosome.values[0], tss.End.values[0] - anchor_flank, tss.End.values[0] + anchor_flank
+            chr, start, end = (
+                tss.Chromosome.values[0],
+                tss.End.values[0] - anchor_flank,
+                tss.End.values[0] + anchor_flank,
+            )
             region = f"{chr}:{start}-{end}"
             logg.debug(f"Using region {region} for anchor gene {anchor_gene}.")
         elif region is None:
@@ -458,8 +474,14 @@ def coverageplot(
         # Compute coverage
         coverages = {
             k: compute_coverage(
-                adata, fragment_files, region, barcode_groups[k], "/tmp/",
-                smooth, normalize if k != "Single-cell" else False, frag_type
+                adata,
+                fragment_files,
+                region,
+                barcode_groups[k],
+                "/tmp/",
+                smooth,
+                normalize if k != "Single-cell" else False,
+                frag_type,
             )
             for k in barcode_groups.index
         }
@@ -488,29 +510,30 @@ def coverageplot(
                         raise ValueError(f"Gene {anchor_gene} not found in GTF.")
                     gene_start = tss.Start.values[0] if tss.Strand.values[0] == "+" else tss.End.values[0]
                     links_str = selected_links.index
-                    links_df = pd.DataFrame({
-                        "start": np.repeat(gene_start, len(links_str)),
-                        "end": (
-                            links_str.str.split(":").str.get(1).str.split("-").str.get(0).astype(int) +
-                            links_str.str.split(":").str.get(1).str.split("-").str.get(1).astype(int)
-                        ) / 2,
-                        "cor": selected_links["cor"].values
-                    })
+                    links_df = pd.DataFrame(
+                        {
+                            "start": np.repeat(gene_start, len(links_str)),
+                            "end": (
+                                links_str.str.split(":").str.get(1).str.split("-").str.get(0).astype(int)
+                                + links_str.str.split(":").str.get(1).str.split("-").str.get(1).astype(int)
+                            )
+                            / 2,
+                            "cor": selected_links["cor"].values,
+                        }
+                    )
                     logg.debug(f"Links for anchor gene {anchor_gene} processed.")
             else:
                 if not {"start", "end", "cor"}.issubset(links_df.columns):
                     raise ValueError("`links` DataFrame must contain 'start', 'end', and 'cor' columns.")
-                links_df = pd.DataFrame({
-                    "start": links_df["start"].astype(int),
-                    "end": links_df["end"].astype(int),
-                    "cor": links_df["cor"]
-                })
+                links_df = pd.DataFrame(
+                    {"start": links_df["start"].astype(int), "end": links_df["end"].astype(int), "cor": links_df["cor"]}
+                )
             logg.debug(f"Links DataFrame processed: {links_df.head()}")
 
         # Setup number of rows and base ratios for tracks
         n_cov_rows = len(coverages) if not collapsed else 1
         track_rows = n_cov_rows
-        
+
         base_ratios = np.repeat(plot_cov_size, n_cov_rows)
         if collapsed:
             base_ratios = np.array([plot_cov_size * 4])
@@ -538,16 +561,18 @@ def coverageplot(
             #     expr_data = pd.DataFrame(data[:, side_genes].X.toarray(), index=data.obs_names, columns=side_genes)
             # else:
             #     expr_data = pd.DataFrame(data[:, side_genes].layers[side_layer].toarray(), index=data.obs_names, columns=side_genes)
-            
+
             side_data = _get_data_modal(data, modal=side_modal)
             side_X = _get_X(side_data, layer=side_layer, var_filter=side_genes, output_type="pd.DataFrame")
             side_X[cluster] = side_data.obs[cluster]
-            df_melt = side_X.melt(id_vars=[cluster], var_name='gene', value_name='expression')
+            df_melt = side_X.melt(id_vars=[cluster], var_name="gene", value_name="expression")
 
             logg.debug(f"Violin plot data prepared: {df_melt.head()}")
-            
+
             # Create a gridspec with a column for violins
-            gs = gridspec.GridSpec(track_rows, 2, height_ratios=base_ratios, width_ratios=[1, side_width_ratio], figure=fig, wspace=0.05)
+            gs = gridspec.GridSpec(
+                track_rows, 2, height_ratios=base_ratios, width_ratios=[1, side_width_ratio], figure=fig, wspace=0.05
+            )
         else:
             gs = gridspec.GridSpec(track_rows, 1, height_ratios=base_ratios, figure=fig)
 
@@ -559,7 +584,7 @@ def coverageplot(
 
         # --- Plotting Loop ---
         plot_index = 0
-        last_ax = None 
+        last_ax = None
 
         if collapsed:
             ax_cov = fig.add_subplot(gs[plot_index, 0])
@@ -567,32 +592,32 @@ def coverageplot(
             ax_cov.set_xlim([pr_region.Start[0], pr_region.End[0]])
             collapsed_coverage = pd.concat(coverages.values()).groupby(level=0).sum()
             _plot_coverage(collapsed_coverage, "Collapsed", ax_cov, "grey", min_coverage, ylim, True, y_font)
-            
+
             if side_genes:
                 ax_side = fig.add_subplot(gs[plot_index, 1])
-                plot_func = sns.violinplot if side_plot_type == 'violin' else sns.boxplot
-                
+                plot_func = sns.violinplot if side_plot_type == "violin" else sns.boxplot
+
                 plot_func(
                     data=df_melt,
-                    x='expression',
+                    x="expression",
                     y=cluster,
                     order=cluster_order,
                     hue=cluster,
                     palette=colors.to_dict(),
-                    orient='h',
+                    orient="h",
                     ax=ax_side,
-                    showfliers=False if side_plot_type == 'box' else None,
-                    legend=False
+                    showfliers=False if side_plot_type == "box" else None,
+                    legend=False,
                 )
 
                 ax_side.set_ylabel("")
                 ax_side.set_yticklabels([])
-                ax_side.tick_params(axis='y', length=0)
+                ax_side.tick_params(axis="y", length=0)
                 ax_side_right = ax_side.twinx()
                 ax_side_right.set_ylim(ax_side.get_ylim())
                 ax_side_right.set_yticks(np.arange(len(cluster_order)))
                 ax_side_right.set_yticklabels(cluster_order, fontsize=y_font or 8)
-                ax_side_right.tick_params(axis='y', length=0)
+                ax_side_right.tick_params(axis="y", length=0)
                 sns.despine(ax=ax_side, left=True)
                 sns.despine(ax=ax_side_right, left=True, right=True)
 
@@ -602,30 +627,46 @@ def coverageplot(
                 ax_cov = fig.add_subplot(gs[plot_index, 0])
                 last_ax = ax_cov
                 ax_cov.set_xlim([pr_region.Start[0], pr_region.End[0]])
-                _plot_coverage(coverages[row_cluster], row_cluster, ax_cov, colors[row_cluster], min_coverage, ylim, True, y_font)
-                
+                _plot_coverage(
+                    coverages[row_cluster], row_cluster, ax_cov, colors[row_cluster], min_coverage, ylim, True, y_font
+                )
+
                 if side_genes:
                     ax_side = fig.add_subplot(gs[plot_index, 1])
                     cluster_df = df_melt[df_melt[cluster] == row_cluster]
 
-
-                    
                     if not cluster_df.empty:
-                        if side_plot_type == 'violin':
-                            sns.violinplot(data=cluster_df, x='expression', y='gene', ax=ax_side, color=colors[row_cluster], orient='h', inner='quartile')
-                        elif side_plot_type == 'box':
-                            sns.boxplot(data=cluster_df, x='expression', y='gene', ax=ax_side, color=colors[row_cluster], orient='h', showfliers=False)
-                    
-                    ax_side.set_yticks([])
-                    ax_side.set_ylabel('')
-                    ax_side.set_xlabel('') 
+                        if side_plot_type == "violin":
+                            sns.violinplot(
+                                data=cluster_df,
+                                x="expression",
+                                y="gene",
+                                ax=ax_side,
+                                color=colors[row_cluster],
+                                orient="h",
+                                inner="quartile",
+                            )
+                        elif side_plot_type == "box":
+                            sns.boxplot(
+                                data=cluster_df,
+                                x="expression",
+                                y="gene",
+                                ax=ax_side,
+                                color=colors[row_cluster],
+                                orient="h",
+                                showfliers=False,
+                            )
 
-                    is_first_plot = (row_cluster == cluster_order[0])
+                    ax_side.set_yticks([])
+                    ax_side.set_ylabel("")
+                    ax_side.set_xlabel("")
+
+                    is_first_plot = row_cluster == cluster_order[0]
                     if is_first_plot:
-                        ax_side.set_title(side_genes[0] if len(side_genes) == 1 else None, fontsize=12, weight='bold')
+                        ax_side.set_title(side_genes[0] if len(side_genes) == 1 else None, fontsize=12, weight="bold")
                         sns.despine(ax=ax_side, top=True, right=True, left=True, bottom=True)
 
-                    is_last_plot = (row_cluster == cluster_order[-1])
+                    is_last_plot = row_cluster == cluster_order[-1]
 
                     if is_last_plot:
                         # ax_side.tick_params(axis='x', labelsize=y_font or 8)
@@ -635,26 +676,25 @@ def coverageplot(
                         x_min, x_max = ax_side.get_xlim()
 
                         ax_side.set_xticks([x_min, x_max])
-                        
-                        ax_side.set_xticklabels([f'{round(x_min)}', f'{round(x_max)}'], fontsize=y_font or 10)
-                        ax_side.tick_params(axis='x', direction='out', length=6, width=1.5, color='black')
 
-                        ax_side.spines['bottom'].set_linewidth(1.5)
+                        ax_side.set_xticklabels([f"{round(x_min)}", f"{round(x_max)}"], fontsize=y_font or 10)
+                        ax_side.tick_params(axis="x", direction="out", length=6, width=1.5, color="black")
+
+                        ax_side.spines["bottom"].set_linewidth(1.5)
                         sns.despine(ax=ax_side, top=True, right=True, left=True, bottom=False)
 
-                        ax_side.set_xlabel('Expression', fontsize=y_font or 10)
+                        ax_side.set_xlabel("Expression", fontsize=y_font or 10)
 
                     else:
                         ax_side.set_xticks([])
                         sns.despine(ax=ax_side, top=True, right=True, left=True, bottom=True)
 
-                
                 ax_cov.set_xticks([])
-                ax_cov.spines['bottom'].set_visible(False)
+                ax_cov.spines["bottom"].set_visible(False)
                 plot_index += 1
 
         # --- Plot remaining tracks (peaks, links, genes) IN THE LEFT COLUMN ---
-        
+
         if peak_groups is not None:
             for row in peak_groups.index:
                 ax = fig.add_subplot(gs[plot_index, 0])
@@ -678,17 +718,16 @@ def coverageplot(
             genes_in_region = genes.overlap(pr_region)
             _plot_gene(genes_in_region, ax)
             plot_index += 1
-        
+
         # Final adjustments for the last axis
         if last_ax:
             last_ax.axes.get_xaxis().set_visible(True)
-            last_ax.spines['bottom'].set_visible(True)
+            last_ax.spines["bottom"].set_visible(True)
             locs = last_ax.get_xticks()
             visible_locs = [locs[0], locs[-1]]
             last_ax.set_xticks(visible_locs)
             last_ax.set_xticklabels([f"{int(t/1e3)}kb" for t in visible_locs], fontsize=y_font or 8)
             last_ax.set_xlabel(f"{chrom}", fontsize=y_font or 10)
-
 
         savefig_or_show("coverage", save=save, show=show)
         if not save and not show:

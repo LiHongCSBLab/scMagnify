@@ -1,4 +1,5 @@
 """Shared docstrings for plotting function parameters."""
+
 from textwrap import dedent
 
 

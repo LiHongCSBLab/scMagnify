@@ -1,40 +1,39 @@
 """Trend plot."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from scipy.sparse import issparse
-import seaborn as sns
-import matplotlib.pyplot as plt
 
-from scmagnify import logging as logg
-from scmagnify.utils import _get_data_modal, _get_X
+from scmagnify.plotting._docs import GROUPS as _G
+from scmagnify.plotting._docs import doc_params
 from scmagnify.plotting._utils import (
-    savefig_or_show,
-    find_indices,
-    _gam,
     _convolve,
+    _gam,
     _polyfit,
+    find_indices,
+    savefig_or_show,
 )
-from scmagnify.plotting._docs import doc_params, GROUPS as _G
+from scmagnify.utils import _get_data_modal, _get_X
 
 if TYPE_CHECKING:
-    from typing import Literal, Union, Optional, List, Dict 
     from anndata import AnnData
     from mudata import MuData
+
     from scmagnify import GRNMuData
-    
+
 __all__ = ["gradplot"]
 
 
-@doc_params(general=_G["general"], smoothing=_G["smoothing"], heatmap=_G["heatmap"], labels=_G["labels"]) 
+@doc_params(general=_G["general"], smoothing=_G["smoothing"], heatmap=_G["heatmap"], labels=_G["labels"])
 def gradplot(
-    data: Union[AnnData, MuData, GRNMuData],
-    var_dict: Dict[str, Union[str, List[str]]],
+    data: AnnData | MuData | GRNMuData,
+    var_dict: dict[str, str | list[str]],
     sortby: str = "pseudotime",
-    palette: Optional[Union[str, List[str]]] = "Reds",
+    palette: str | list[str] | None = "Reds",
     col_color=None,
     smooth_method="gam",
     normalize=False,
@@ -54,7 +53,7 @@ def gradplot(
     figsize=(6, 3),
     show=True,
     save=None,
-    feature_colors=None, 
+    feature_colors=None,
     **kwargs,
 ):
     """Gradient trend plot using imshow to visualize variable changes.
@@ -85,7 +84,6 @@ def gradplot(
     matplotlib.figure.Figure | None
         Figure when ``show`` is False, otherwise None.
     """
-    
     fig, ax = plt.subplots(figsize=figsize)
 
     adata = _get_data_modal(data, modal="RNA")
@@ -93,7 +91,7 @@ def gradplot(
     tkey = sortby
     time = adata.obs[tkey].values
     time = time[np.isfinite(time)]
-    
+
     # Sort cells by time
     time_index = np.argsort(time)
     time_sorted = time[time_index]
@@ -102,7 +100,7 @@ def gradplot(
 
     # Prepare data for imshow
     heatmap_data = []
-    feature_columns = [] 
+    feature_columns = []
     for i, (var, modalities) in enumerate(var_dict.items()):
         if isinstance(modalities, str):
             modalities = [modalities]  # Convert to list if a single modality is provided
@@ -113,13 +111,13 @@ def gradplot(
             adata = data.mod[modal]
             if var not in adata.var_names:
                 raise ValueError(f"Variable {var} not found in {modal} modality.")
-        
+
             # Get the data matrix
             adata_sorted = adata[time_index, :].copy()
             var_bool = adata_sorted.var_names.isin([var])
             X = _get_X(adata_sorted, var_filter=var_bool, output_type="ndarray")
 
-            df = pd.DataFrame(X, index=adata_sorted.obs_names, columns=[var])    
+            df = pd.DataFrame(X, index=adata_sorted.obs_names, columns=[var])
 
             time_sorted_bins = np.linspace(time_sorted.min(), time_sorted.max(), df.shape[0])
 
@@ -159,7 +157,15 @@ def gradplot(
 
     # Add feature labels using ax.text
     for i, f in enumerate(feature_columns[::-1]):  # Reverse to match imshow order
-        ax.text(-0.05, i + 0.5, f, fontsize=13, horizontalalignment='right', verticalalignment='center', transform=ax.get_yaxis_transform())
+        ax.text(
+            -0.05,
+            i + 0.5,
+            f,
+            fontsize=13,
+            horizontalalignment="right",
+            verticalalignment="center",
+            transform=ax.get_yaxis_transform(),
+        )
 
     # Set y-axis labels
     ax.set_yticks(np.arange(len(feature_columns)) + 0.5)
@@ -181,7 +187,7 @@ def gradplot(
 
 # def _gam(df, time_sorted, time_sorted_bins, n_splines, new_index):
 #     """Smooth data using Generalized Additive Model (GAM)."""
-    
+
 #     df_s = pd.DataFrame(index=new_index, columns=df.columns)
 #     for gene in df.columns:
 #         y_pred, _ = gam_fit_predict(

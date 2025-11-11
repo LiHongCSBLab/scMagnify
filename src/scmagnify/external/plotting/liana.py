@@ -1,13 +1,10 @@
 from __future__ import annotations
 
-from typing import Optional, List
-
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from anndata import AnnData
-from matplotlib.colors import ListedColormap
 import seaborn as sns
-import matplotlib.pyplot as plt
+from anndata import AnnData
 
 
 class LianaVisualizer:
@@ -26,7 +23,7 @@ class LianaVisualizer:
         magnitude_col: str = "magnitude",
         pvalue_col: str = "pvalue",
         pvalue_cutoff: float = 0.05,
-        cluster_key: str | None = None, 
+        cluster_key: str | None = None,
     ) -> None:
         """Initialize the visualizer and precompute core aggregates.
 
@@ -56,11 +53,11 @@ class LianaVisualizer:
 
         self.full_cci_df: pd.DataFrame
         self.sig_cci_df: pd.DataFrame
-        self.cell_types: List[str]
+        self.cell_types: list[str]
         self.interaction_matrix: pd.DataFrame
         self.interaction_count_matrix: pd.DataFrame
-        self.pathways: List[str]
-        self.lr_pairs: List[str]
+        self.pathways: list[str]
+        self.lr_pairs: list[str]
 
         self._validate_input()
         self._extract_dataframes()
@@ -86,7 +83,7 @@ class LianaVisualizer:
         # significant subset
         self.sig_cci_df = self.full_cci_df[self.full_cci_df[self.pvalue_col] <= self.pvalue_cutoff].copy()
 
-    def _get_all_celltypes(self) -> List[str]:
+    def _get_all_celltypes(self) -> list[str]:
         sources = pd.Index(self.sig_cci_df["source"].astype(str))
         targets = pd.Index(self.sig_cci_df["target"].astype(str))
         uniq = sources.union(targets).unique()
@@ -105,11 +102,9 @@ class LianaVisualizer:
         if self.sig_cci_df.empty:
             idx = self.cell_types
             return pd.DataFrame(0.0, index=idx, columns=idx)
-        mat = (
-            self.sig_cci_df
-            .pivot_table(index="source", columns="target", values=self.magnitude_col, aggfunc="sum")
-            .fillna(0.0)
-        )
+        mat = self.sig_cci_df.pivot_table(
+            index="source", columns="target", values=self.magnitude_col, aggfunc="sum"
+        ).fillna(0.0)
         # reindex to full square matrix
         mat = mat.reindex(index=self.cell_types, columns=self.cell_types, fill_value=0.0)
         return mat
@@ -117,14 +112,10 @@ class LianaVisualizer:
     def _calculate_interaction_count_matrix(self) -> pd.DataFrame:
         if self.sig_cci_df.empty:
             idx = self.cell_types
-        # reorder precomputed matrices to preferred cell order once
+            # reorder precomputed matrices to preferred cell order once
             return pd.DataFrame(0, index=idx, columns=idx)
-        
-        cnt = (
-            self.sig_cci_df
-            .groupby(["source", "target"]).size()
-            .unstack(fill_value=0)
-        )
+
+        cnt = self.sig_cci_df.groupby(["source", "target"]).size().unstack(fill_value=0)
         cnt = cnt.reindex(index=self.cell_types, columns=self.cell_types, fill_value=0)
         return cnt
 
@@ -153,11 +144,14 @@ class LianaVisualizer:
 
         self.pathways = (
             sorted(self.sig_cci_df["pathway"].dropna().astype(str).unique().tolist())
-            if "pathway" in self.sig_cci_df.columns else []
+            if "pathway" in self.sig_cci_df.columns
+            else []
         )
         self.lr_pairs = (
             (self.sig_cci_df["ligand"].astype(str) + "|" + self.sig_cci_df["receptor"].astype(str))
-            .dropna().unique().tolist()
+            .dropna()
+            .unique()
+            .tolist()
         )
 
     # ---------------------- public accessors ----------------------
@@ -175,9 +169,9 @@ class LianaVisualizer:
 
     def subset(
         self,
-        sources: Optional[List[str]] = None,
-        targets: Optional[List[str]] = None,
-        pathways: Optional[List[str]] = None,
+        sources: list[str] | None = None,
+        targets: list[str] | None = None,
+        pathways: list[str] | None = None,
     ) -> pd.DataFrame:
         """Return a filtered view of significant interactions.
 
@@ -197,19 +191,18 @@ class LianaVisualizer:
             df = df[df["pathway"].isin(pathways)]
         return df.copy()
 
-
     # ---------------------- plotting ----------------------
     def plot_chord(
         self,
         kind: str = "strength",
-        cell_order: Optional[List[str]] = None,
+        cell_order: list[str] | None = None,
         space: int = 5,
         cmap: str = "tab10",
-        label_kws: Optional[dict] = None,
-        link_kws: Optional[dict] = None,
+        label_kws: dict | None = None,
+        link_kws: dict | None = None,
         figsize: tuple = (6, 6),
-        min_value: Optional[float] = None,
-        normalize: Optional[str] = None,
+        min_value: float | None = None,
+        normalize: str | None = None,
         use_cluster_colors: bool = True,
     ):
         """Chord diagram of inter-cell interactions using pycirclize.
@@ -234,9 +227,7 @@ class LianaVisualizer:
 
         if kind not in {"strength", "count"}:
             raise ValueError("kind must be 'strength' or 'count'")
-        mat = (
-            self.interaction_matrix if kind == "strength" else self.interaction_count_matrix
-        ).copy()
+        mat = (self.interaction_matrix if kind == "strength" else self.interaction_count_matrix).copy()
 
         # Order cells
         # Default order from categorical obs if cluster_key provided
@@ -270,7 +261,6 @@ class LianaVisualizer:
             pass
         else:
             raise ValueError("normalize must be one of None, 'row', 'col'")
-        
 
         label_kws = {} if label_kws is None else dict(label_kws)
         link_kws = {"ec": "black", "lw": 0.5, "direction": 1} | (link_kws or {})
@@ -292,13 +282,12 @@ class LianaVisualizer:
         fig = circos.plotfig(figsize=figsize)
         return fig
 
-
     def plot_bubble(
         self,
-        lr_pairs: Optional[List[str]] = None,
-        sources: Optional[List[str]] = None,
-        targets: Optional[List[str]] = None,
-        top_n_lr: Optional[int] = None,
+        lr_pairs: list[str] | None = None,
+        sources: list[str] | None = None,
+        targets: list[str] | None = None,
+        top_n_lr: int | None = None,
         size_range: tuple = (20, 300),
         cmap: str = "viridis",
         figsize: tuple = (10, 6),
@@ -323,9 +312,9 @@ class LianaVisualizer:
         sort_by
             Sort LR pairs by 'magnitude' (sum) or 'significance' (mean -log10 p).
         """
+        import matplotlib.pyplot as plt
         import numpy as np
         import seaborn as sns
-        import matplotlib.pyplot as plt
 
         df = self.sig_cci_df.copy()
         # add helper columns
@@ -352,13 +341,9 @@ class LianaVisualizer:
             keep = agg.head(top_n_lr).index.tolist()
             df = df[df["pair"].isin(keep)]
         if sort_by == "magnitude":
-            lr_order = (
-                df.groupby("pair")["mag"].sum().sort_values(ascending=False).index.tolist()
-            )
+            lr_order = df.groupby("pair")["mag"].sum().sort_values(ascending=False).index.tolist()
         else:
-            lr_order = (
-                df.groupby("pair")["sig"].mean().sort_values(ascending=False).index.tolist()
-            )
+            lr_order = df.groupby("pair")["sig"].mean().sort_values(ascending=False).index.tolist()
 
         # determine cellpair ordering using cluster order if available
         if (
@@ -406,10 +391,10 @@ class LianaVisualizer:
     def plot_interact_heatmap(
         self,
         kind: str = "strength",
-        cell_type_colors: Optional[dict] = None,
+        cell_type_colors: dict | None = None,
         figsize: tuple = (5, 5),
         cmap: str = "Reds",
-        cbar_pos: Optional[tuple] = (0.94, 0.8, 0.03, 0.1),
+        cbar_pos: tuple | None = (0.94, 0.8, 0.03, 0.1),
         title: str = "Cell-Cell Interaction Heatmap",
         **kwargs,
     ):
@@ -430,17 +415,15 @@ class LianaVisualizer:
         kwargs
             Passed to seaborn.heatmap.
         """
-        import matplotlib.pyplot as plt
         import matplotlib.gridspec as gridspec
-        import seaborn as sns
+        import matplotlib.pyplot as plt
         import numpy as np
+        import seaborn as sns
 
-        sns.set(style="ticks") 
+        sns.set(style="ticks")
         if kind not in {"strength", "count"}:
             raise ValueError("kind must be 'strength' or 'count'")
-        interaction_matrix = (
-            self.interaction_matrix if kind == "strength" else self.interaction_count_matrix
-        )
+        interaction_matrix = self.interaction_matrix if kind == "strength" else self.interaction_count_matrix
         sources = interaction_matrix.index.tolist()
         targets = interaction_matrix.columns.tolist()
         outgoing_strength = interaction_matrix.sum(axis=1).values
@@ -457,9 +440,7 @@ class LianaVisualizer:
 
         # layout
         fig = plt.figure(figsize=figsize)
-        gs = gridspec.GridSpec(
-            2, 2, width_ratios=(4, 1), height_ratios=(1, 4), wspace=0.05, hspace=0.05
-        )
+        gs = gridspec.GridSpec(2, 2, width_ratios=(4, 1), height_ratios=(1, 4), wspace=0.05, hspace=0.05)
         ax_heatmap = fig.add_subplot(gs[1, 0])
         ax_bar_top = fig.add_subplot(gs[0, 0], sharex=ax_heatmap)
         ax_bar_left = fig.add_subplot(gs[1, 1], sharey=ax_heatmap)
@@ -472,7 +453,7 @@ class LianaVisualizer:
         sns.heatmap(
             interaction_matrix,
             ax=ax_heatmap,
-            cmap=cmap, 
+            cmap=cmap,
             # linewidths=0.5,
             # linecolor="lightgrey",
             **kwargs,
@@ -481,7 +462,6 @@ class LianaVisualizer:
         ax_heatmap.set_xlabel("")
         ax_heatmap.set_xticks(np.arange(len(targets)) + 0.5)
         ax_heatmap.set_yticks(np.arange(len(sources)) + 0.5)
-
 
         # top bar (incoming)
         ax_bar_top.bar(
@@ -526,19 +506,15 @@ class LianaVisualizer:
         # ax_bar_top.xaxis.set_visible(False)
         # ax_bar_left.yaxis.set_visible(False)
 
-            # --- NEW: Add colored patches for row/column labels ---
-        patch_kwargs = dict(
-            fill=True, lw=1.5, edgecolor="w", clip_on=False
-        )
-        
+        # --- NEW: Add colored patches for row/column labels ---
+        patch_kwargs = {"fill": True, "lw": 1.5, "edgecolor": "w", "clip_on": False}
+
         # Add column color patches (below the heatmap)
-        col_p = 0.03 # Offset and thickness parameter
+        col_p = 0.03  # Offset and thickness parameter
         for i, target in enumerate(targets):
             color = cell_type_colors.get(target, "grey")
             col_color_patch = plt.Rectangle(
-                (i, -col_p), 1, col_p, 
-                transform=ax_heatmap.get_xaxis_transform(), 
-                facecolor=color, **patch_kwargs
+                (i, -col_p), 1, col_p, transform=ax_heatmap.get_xaxis_transform(), facecolor=color, **patch_kwargs
             )
             ax_heatmap.add_patch(col_color_patch)
 
@@ -547,9 +523,7 @@ class LianaVisualizer:
         for i, source in enumerate(sources):
             color = cell_type_colors.get(source, "grey")
             row_color_patch = plt.Rectangle(
-                ( -row_p, i), row_p, 1, 
-                transform=ax_heatmap.get_yaxis_transform(), 
-                facecolor=color, **patch_kwargs
+                (-row_p, i), row_p, 1, transform=ax_heatmap.get_yaxis_transform(), facecolor=color, **patch_kwargs
             )
             ax_heatmap.add_patch(row_color_patch)
 
@@ -563,27 +537,27 @@ class LianaVisualizer:
 
     def plot_radar(
         self,
-        cell: Optional[str] = None,
+        cell: str | None = None,
         mode: str = "outgoing",  # 'outgoing' (source->targets) or 'incoming' (sources->target)
-        kind: str = "strength",   # 'strength' or 'count'
-        cell_order: Optional[List[str]] = None,
+        kind: str = "strength",  # 'strength' or 'count'
+        cell_order: list[str] | None = None,
         include_self: bool = False,
-        color: Optional[str] = None,
+        color: str | None = None,
         figsize: tuple = (5, 5),
-        ylim: Optional[tuple] = None,
-        yticks: Optional[List[float]] = None,
+        ylim: tuple | None = None,
+        yticks: list[float] | None = None,
         linewidth: float = 2.0,
         fill_alpha: float = 0.2,
-        title: Optional[str] = None,
+        title: str | None = None,
         ncols: int = 4,
     ):
         """Radar plot of outgoing/incoming interaction.
 
         If `cell` is None, plot all cell types in a grid (ncols columns).
         """
+        import matplotlib.pyplot as plt
         import numpy as np
         import seaborn as sns
-        import matplotlib.pyplot as plt
 
         if kind not in {"strength", "count"}:
             raise ValueError("kind must be 'strength' or 'count'")
@@ -592,13 +566,17 @@ class LianaVisualizer:
         mat = self.interaction_matrix if kind == "strength" else self.interaction_count_matrix
 
         # determine base order for categories
-        if cell_order is None and self.cluster_key is not None and self.cluster_key in self.adata.obs \
-            and hasattr(self.adata.obs[self.cluster_key].dtype, "categories"):
+        if (
+            cell_order is None
+            and self.cluster_key is not None
+            and self.cluster_key in self.adata.obs
+            and hasattr(self.adata.obs[self.cluster_key].dtype, "categories")
+        ):
             base_order = list(self.adata.obs[self.cluster_key].cat.categories.astype(str))
         else:
             base_order = list(self.cell_types)
 
-        def _plot_one(ax, cell_name: str, color_override: Optional[str] = None):
+        def _plot_one(ax, cell_name: str, color_override: str | None = None):
             # categories depend on mode
             if mode == "outgoing":
                 cats = [c for c in base_order if c in mat.columns]
@@ -638,10 +616,10 @@ class LianaVisualizer:
             if yticks is not None:
                 ax.set_yticks(yticks)
                 ax.set_yticklabels([str(x) for x in yticks], color="gray", size=6)
-                ax.tick_params(axis='y', pad=8)
+                ax.tick_params(axis="y", pad=8)
             ax.set_xticks(angles[:-1])
             ax.set_xticklabels(cats, size=12)
-            ax.grid(True, linestyle='--', alpha=0.7)
+            ax.grid(True, linestyle="--", alpha=0.7)
             ax.set_title(title or ttl, fontsize=15)
 
         sns.set(style="ticks")
@@ -649,7 +627,7 @@ class LianaVisualizer:
         if cell is not None:
             if cell not in mat.index or cell not in mat.columns:
                 raise ValueError(f"Unknown cell type: {cell}")
-            fig, ax = plt.subplots(figsize=figsize, subplot_kw=dict(polar=True))
+            fig, ax = plt.subplots(figsize=figsize, subplot_kw={"polar": True})
             _plot_one(ax, cell, color)
             fig.tight_layout()
             return fig, ax
@@ -662,7 +640,7 @@ class LianaVisualizer:
         ncols = max(1, int(ncols))
         nrows = int(np.ceil(n / ncols))
         fig_w, fig_h = figsize
-        fig, axs = plt.subplots(nrows, ncols, subplot_kw=dict(polar=True), figsize=(fig_w * ncols, fig_h * nrows))
+        fig, axs = plt.subplots(nrows, ncols, subplot_kw={"polar": True}, figsize=(fig_w * ncols, fig_h * nrows))
         axs = np.array(axs).reshape(nrows, ncols)
 
         # colors mapping per cell if available
@@ -679,11 +657,10 @@ class LianaVisualizer:
                     _plot_one(ax, cell_name, (color_map.get(cell_name) if color_map else None))
                     idx += 1
                 else:
-                    ax.axis('off')
+                    ax.axis("off")
 
         plt.tight_layout()
         return fig, axs
-
 
     def add_pathway(
         self,
@@ -712,7 +689,7 @@ class LianaVisualizer:
         if isinstance(pathway_table, (str, bytes)):
             try:
                 dfp = pd.read_csv(pathway_table, sep=None, engine="python")
-            except Exception:
+            except Exception as _e:
                 # fallback to comma
                 dfp = pd.read_csv(pathway_table)
         else:
@@ -730,8 +707,8 @@ class LianaVisualizer:
         dfp["pair"] = dfp[ligand_col] + "|" + dfp[receptor_col]
         pair_to_path = (
             dfp.dropna(subset=[pathway_col])
-               .groupby("pair")[pathway_col]
-               .apply(lambda s: multiple_sep.join(pd.unique([x for x in s if x and x != 'nan'])))
+            .groupby("pair")[pathway_col]
+            .apply(lambda s: multiple_sep.join(pd.unique([x for x in s if x and x != "nan"])))
         )
 
         # annotate full and significant tables
@@ -746,14 +723,15 @@ class LianaVisualizer:
         self.adata.uns[self.res_key] = self.full_cci_df
         self.pathways = (
             sorted(self.sig_cci_df["pathway"].dropna().astype(str).str.split(multiple_sep).explode().unique().tolist())
-            if "pathway" in self.sig_cci_df.columns else []
+            if "pathway" in self.sig_cci_df.columns
+            else []
         )
 
     def plot_pathway_centrality(
         self,
-        df: Optional[pd.DataFrame] = None,
-        magnitude_col: Optional[str] = None,
-        cell_type_colors: Optional[dict] = None,
+        df: pd.DataFrame | None = None,
+        magnitude_col: str | None = None,
+        cell_type_colors: dict | None = None,
         figsize: tuple = (10, 5),
         left_ratio: float = 0.4,
         cmap: str = "viridis",
@@ -761,7 +739,7 @@ class LianaVisualizer:
         annotate: bool = True,
         bar_color: str = "#9e9e9e",
         cbar: bool = False,
-        title: Optional[str] = None,
+        title: str | None = None,
     ):
         """Pathway-level analysis and composite visualization (centrality + involvement).
 
@@ -797,13 +775,12 @@ class LianaVisualizer:
 
         # determine plotting order for cells
         if (
-            self.cluster_key is not None and self.cluster_key in self.adata.obs
+            self.cluster_key is not None
+            and self.cluster_key in self.adata.obs
             and hasattr(self.adata.obs[self.cluster_key].dtype, "categories")
         ):
             cats = list(self.adata.obs[self.cluster_key].cat.categories.astype(str))
-            cell_order = [c for c in cats if c in cells_present] + [
-                c for c in cells_present if c not in cats
-            ]
+            cell_order = [c for c in cats if c in cells_present] + [c for c in cells_present if c not in cats]
         else:
             cell_order = cells_present
 
@@ -830,11 +807,12 @@ class LianaVisualizer:
         ordered_cols = [c for c in cell_order if c in all_cols] + [c for c in all_cols if c not in cell_order]
         ps = ps.reindex(columns=ordered_cols, fill_value=0.0)
         pr = pr.reindex(columns=ordered_cols, fill_value=0.0)
-        involvement = (ps.reindex(index=ps.index.union(pr.index), fill_value=0.0) +
-                       pr.reindex(index=ps.index.union(pr.index), fill_value=0.0))
+        involvement = ps.reindex(index=ps.index.union(pr.index), fill_value=0.0) + pr.reindex(
+            index=ps.index.union(pr.index), fill_value=0.0
+        )
         # involvement = involvement.fillna(0.0)
         # Drop nan rows (pathways with no involvement)
-        involvement = involvement.loc[involvement.index != 'nan']
+        involvement = involvement.loc[involvement.index != "nan"]
 
         self.pathway_involvement_matrix = involvement.copy()
         # pathway strength for bar
@@ -855,12 +833,12 @@ class LianaVisualizer:
         y = incoming.values
         colors = [cell_type_colors.get(c, "grey") for c in cell_order]
         ax_scatter.scatter(x, y, s=sizes.values, c=colors, edgecolors="black", linewidths=0.3)
-        for xi, yi, name in zip(x, y, cell_order):
+        for xi, yi, name in zip(x, y, cell_order, strict=False):
             if annotate:
                 import matplotlib.patheffects as path_effects
+
                 text_patheffects = [path_effects.withStroke(linewidth=1, foreground="white")]
-                ax_scatter.text(xi, yi, name, fontsize=9, ha="center", va="center",
-                                path_effects=text_patheffects)
+                ax_scatter.text(xi, yi, name, fontsize=9, ha="center", va="center", path_effects=text_patheffects)
                 # ax_scatter.text(xi, yi, name, fontsize=9, ha="center", va="center")
         ax_scatter.set_xlabel("Outgoing centrality score")
         ax_scatter.set_ylabel("Incoming centrality score")
@@ -868,9 +846,7 @@ class LianaVisualizer:
         ax_scatter.grid(True, ls="--", alpha=0.4)
 
         # right heatmap + bar
-        gs_right = gridspec.GridSpecFromSubplotSpec(
-            1, 2, subplot_spec=gs_main[0, 1], width_ratios=[4, 1], wspace=0.05
-        )
+        gs_right = gridspec.GridSpecFromSubplotSpec(1, 2, subplot_spec=gs_main[0, 1], width_ratios=[4, 1], wspace=0.05)
         ax_heatmap = fig.add_subplot(gs_right[0, 0])
         ax_bar = fig.add_subplot(gs_right[0, 1], sharey=ax_heatmap)
 
@@ -885,13 +861,11 @@ class LianaVisualizer:
         ax_heatmap.set_xticklabels(ax_heatmap.get_xticklabels(), rotation=90, ha="center")
 
         # Add column color patches (below the heatmap)
-        col_p = 0.03 # Offset and thickness parameter
+        col_p = 0.03  # Offset and thickness parameter
         for i, target in enumerate(involvement.columns):
             color = cell_type_colors.get(target, "grey")
             col_color_patch = plt.Rectangle(
-                (i, -col_p), 1, col_p, 
-                transform=ax_heatmap.get_xaxis_transform(), 
-                facecolor=color, clip_on=False
+                (i, -col_p), 1, col_p, transform=ax_heatmap.get_xaxis_transform(), facecolor=color, clip_on=False
             )
             ax_heatmap.add_patch(col_color_patch)
 

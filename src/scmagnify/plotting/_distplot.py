@@ -1,48 +1,45 @@
 """Distribution plot for multiple parameters with thresholds."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-from adjustText import adjust_text
 import matplotlib as mpl
+import matplotlib.pyplot as plt
+import pandas as pd
+import seaborn as sns
 
-from scmagnify import logging as logg
-from scmagnify.plotting._utils import savefig_or_show, _setup_rc_params, _format_title
-from scmagnify.utils import  d, inject_docs
+from scmagnify.plotting._utils import _setup_rc_params, savefig_or_show
+from scmagnify.utils import d
+
 if TYPE_CHECKING:
-    from scmagnify import GRNMuData
-    from typing import Literal, Union, Optional, List, Dict, Tuple
-    from anndata import AnnData
-    from mudata import MuData
+    pass
 
 __all__ = ["distplot"]
 
+
 @d.dedent
 def distplot(
-        data_dict: Dict[str, pd.Series],
-        thresholds: Dict[str, float],
-        figsize: Optional[tuple] = None,
-        dpi: int = 300,
-        nrows: Optional[int] = None,
-        ncols: Optional[int] = 3,
-        wspace: Optional[float] = 0.1,
-        hspace: Optional[float] = None,
-        sharex: Optional[bool] = False,
-        sharey: Optional[bool] = False,
-        bins: int = 30,
-        kde: bool = True,
-        palette: str = "tab10",
-        context: Optional[str] = None,
-        font_scale: Optional[float] = 1,
-        default_context: Optional[dict] = None,
-        theme: Optional[str] = "whitegrid",
-        show: Optional[bool] = None,
-        save: Optional[Union[bool, str]] = None,
-    ):
+    data_dict: dict[str, pd.Series],
+    thresholds: dict[str, float],
+    figsize: tuple | None = None,
+    dpi: int = 300,
+    nrows: int | None = None,
+    ncols: int | None = 3,
+    wspace: float | None = 0.1,
+    hspace: float | None = None,
+    sharex: bool | None = False,
+    sharey: bool | None = False,
+    bins: int = 30,
+    kde: bool = True,
+    palette: str = "tab10",
+    context: str | None = None,
+    font_scale: float | None = 1,
+    default_context: dict | None = None,
+    theme: str | None = "whitegrid",
+    show: bool | None = None,
+    save: bool | str | None = None,
+):
     """
     Plot the distribution of multiple parameters with thresholds on separate subplots.
 
@@ -80,7 +77,6 @@ def distplot(
 
     rc_params = _setup_rc_params(context, default_context, font_scale, theme)
 
-
     with mpl.rc_context(rc_params):
         # Determine the number of rows and columns for subplots
         n_plots = len(data_dict)
@@ -88,9 +84,14 @@ def distplot(
 
         # Create the figure and axes
         fig, axes = plt.subplots(
-            nrows=nrows, ncols=ncols, figsize=figsize, dpi=dpi, sharex=sharex, sharey=sharey,
+            nrows=nrows,
+            ncols=ncols,
+            figsize=figsize,
+            dpi=dpi,
+            sharex=sharex,
+            sharey=sharey,
             gridspec_kw={"wspace": wspace, "hspace": hspace} if wspace or hspace else None,
-            constrained_layout=True
+            constrained_layout=True,
         )
         axes = axes.flatten()
 
@@ -103,12 +104,14 @@ def distplot(
                 kde=kde,
                 color=sns.color_palette(palette)[i % len(sns.color_palette(palette))],
                 ax=ax,
-                alpha=0.7
+                alpha=0.7,
             )
             # Add threshold line
             if param in thresholds:
-                ax.axvline(thresholds[param], color="red", linestyle="--", label=f"Threshold = {thresholds[param] :.2f}")
-            
+                ax.axvline(
+                    thresholds[param], color="red", linestyle="--", label=f"Threshold = {thresholds[param] :.2f}"
+                )
+
             # Set titles and labels
             ax.set_title(f"Distribution of {param}")
             ax.set_xlabel(param)
@@ -123,4 +126,3 @@ def distplot(
         savefig_or_show("distplot", save=False, show=True)
         if (save and show) is False:
             return fig, axes
-        

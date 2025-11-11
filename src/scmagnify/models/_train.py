@@ -2,50 +2,43 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import decoupler as dc
 import numpy as np
 import pandas as pd
 import scanpy as sc
-from anndata import AnnData
-import decoupler as dc
-
-from tqdm.auto import tqdm
-from rich.progress import track, Progress
-
 import torch
 import torch.nn as nn
-import torch.optim as optim
 import torch.nn.functional as F
 import torch.nn.modules.loss as loss
-from torch.utils.data import TensorDataset, DataLoader
-
-from scmagnify.settings import settings
-from scmagnify.GRNMuData import GRNMuData
-from scmagnify.utils import _get_data_modal, filter_network, d, inject_docs
-from scmagnify.tools._gene_activity import get_acts
-
-from scmagnify.models._modules import MSNGC
-from scmagnify.models._utils import *
+import torch.optim as optim
+from anndata import AnnData
+from rich.progress import Progress
+from torch.utils.data import DataLoader, TensorDataset
 
 from scmagnify import logging as logg
+from scmagnify.GRNMuData import GRNMuData
+from scmagnify.models._modules import MSNGC
+from scmagnify.models._utils import *
+from scmagnify.utils import _get_data_modal, d, filter_network
 
 if TYPE_CHECKING:
-    from typing import List, Optional, Tuple, Union
     from anndata import AnnData
     from mudata import MuData
     from numpy.typing import NDArray
+
 
 @d.dedent
 class MAGNI:
     """
     Class implementing Multi-Scale Gene Regulation Inference (MAGNI).
 
-    This model integrates single-cell multi-omic data and pseudotemporal information 
+    This model integrates single-cell multi-omic data and pseudotemporal information
     through a nonlinear Granger causality model to infer multi-scale GRNs.
 
     .. seealso::
     - See :doc:`` on how to
         compute the
-    
+
     Parameters
     ----------
     %(data)s
@@ -80,16 +73,17 @@ class MAGNI:
     %(device)s
 
     """
+
     def __init__(
         self,
-        data: Union[AnnData, MuData],
+        data: AnnData | MuData,
         modal: str = "RNA",
-        layer: Optional[str] = None,
+        layer: str | None = None,
         time_key: str = "palantir_pseudotime",
-        gene_selected: Optional[List[str]] = None,
-        basal_grn: Optional[NDArray] = None,
+        gene_selected: list[str] | None = None,
+        basal_grn: NDArray | None = None,
         func: nn.Module = MSNGC,
-        hidden: List[int] = [50],
+        hidden: list[int] = [50],
         lag: int = 5,
         max_iter: int = 1000,
         batch_size: int = 32,
@@ -106,7 +100,6 @@ class MAGNI:
         """
         Initialize the MAGNI model.
         """
-
         self.data = data
         self.func = func
         self.hidden = hidden
@@ -129,7 +122,7 @@ class MAGNI:
         torch.backends.cudnn.deterministic = True
         np.random.seed(self.seed)
         torch.manual_seed(self.seed)
-        
+
         # Check if GPU is available.
         # Prepare the device string
         device_str = self.device
@@ -141,7 +134,7 @@ class MAGNI:
             self.device = torch.device(device_str)
         else:
             self.device = torch.device("cpu")
-        
+
         # Build Chromatin Constraint Matrix
         if gene_selected is None:
             adata = _get_data_modal(data, modal)
@@ -154,16 +147,18 @@ class MAGNI:
         if basal_grn is None:
             self.adata_fil, self.chrom_constraint = chromatin_constraint(self.data, gene_selected=gene_selected)
         else:
-            self.adata_fil, self.chrom_constraint = import_basalGRN(basal_grn=basal_grn, adata=self.data, gene_selected=gene_selected)
-            
+            self.adata_fil, self.chrom_constraint = import_basalGRN(
+                basal_grn=basal_grn, adata=self.data, gene_selected=gene_selected
+            )
+
         # Preprocess data.
         self.AX, self.Y, self.T = self._preprocess_data()
-        
+
         self.n_reg = self.adata_fil[:, self.adata_fil.var["is_reg"]].shape[1]
         self.n_target = self.adata_fil[:, self.adata_fil.var["is_target"]].shape[1]
         self.reg_names = self.adata_fil[:, self.adata_fil.var["is_reg"]].var_names
         self.target_names = self.adata_fil[:, self.adata_fil.var["is_target"]].var_names
-        
+
         # Create model.
         self.model = self.func(
             n_reg=self.n_reg,
@@ -176,19 +171,17 @@ class MAGNI:
 
         # Model summary
         logg.info(self.model)
-        
+
         # Create optimizer, scheduler, and loss function.
-        self.optimizer = optim.Adam(
-            self.model.parameters(), lr=self.lr, weight_decay=self.weight_decay
-        )
+        self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=self.weight_decay)
 
         self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            self.optimizer, mode="min", factor=0.5, patience=patience/2, verbose=True
+            self.optimizer, mode="min", factor=0.5, patience=patience / 2, verbose=True
         )
 
         self.criterion = loss.MSELoss()
-        
-    def _preprocess_data(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+
+    def _preprocess_data(self) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Preprocess data for training.
 
@@ -199,9 +192,7 @@ class MAGNI:
         """
         # Preprocess data.
         sc.pp.neighbors(self.adata_fil, n_neighbors=30)
-        AX = partial_ordering(self.adata_fil[:, self.adata_fil.var["is_reg"]], 
-                            dyn=self.time_key, 
-                            lag=self.lag)
+        AX = partial_ordering(self.adata_fil[:, self.adata_fil.var["is_reg"]], dyn=self.time_key, lag=self.lag)
         Y = normalize_data(self.adata_fil[:, self.adata_fil.var["is_target"]].X.A)
         T = self.adata_fil.obs[self.time_key].values
 
@@ -211,7 +202,7 @@ class MAGNI:
         AX = AX.permute(1, 0, 2)  # K x BS x p -> BS x K x p
         Y = Y[sort_idx, :]  # BS x q
         T = T[sort_idx]
-        
+
         return AX.float(), Y.float(), torch.from_numpy(T).float()
 
     def _data_loader(self, AX: torch.Tensor, Y: torch.Tensor, T: torch.Tensor, shuffle: bool = True) -> DataLoader:
@@ -236,8 +227,10 @@ class MAGNI:
         """
         dataset = TensorDataset(AX, Y, T)
         return DataLoader(dataset, batch_size=self.batch_size, shuffle=shuffle)
-    
-    def _train_epoch(self, model: nn.Module, AX: torch.Tensor, Y: torch.Tensor, T: torch.Tensor) -> Tuple[float, float, float, float]:
+
+    def _train_epoch(
+        self, model: nn.Module, AX: torch.Tensor, Y: torch.Tensor, T: torch.Tensor
+    ) -> tuple[float, float, float, float]:
         """
         Train model for one epoch.
 
@@ -264,8 +257,8 @@ class MAGNI:
         train_loss_reg = 0.0
         train_loss_smooth = 0.0
 
-        for batch_idx, (AX, Y, T) in enumerate(self._data_loader(AX, Y, T)):
-            AX, Y = AX.to(self.device), Y.to(self.device)
+        for batch_idx, (AX_batch, Y_batch, T_batch) in enumerate(self._data_loader(AX, Y, T)):
+            AX, Y = AX_batch.to(self.device), Y_batch.to(self.device)
             self.optimizer.zero_grad()
             coeffs, Y_pred, _ = model(AX)
 
@@ -273,17 +266,18 @@ class MAGNI:
 
             # Compute regularisation loss.
             # Sparsity-inducing penalty term
-            loss_reg = (1 - self.alpha) * torch.mean(torch.mean(torch.norm(coeffs, dim=1, p=2), dim=0)) + \
-                       self.alpha * torch.mean(torch.mean(torch.norm(coeffs, dim=1, p=1), dim=0))
-            
+            loss_reg = (1 - self.alpha) * torch.mean(
+                torch.mean(torch.norm(coeffs, dim=1, p=2), dim=0)
+            ) + self.alpha * torch.mean(torch.mean(torch.norm(coeffs, dim=1, p=1), dim=0))
+
             # Temporal smoothness penalty term
-            T = np.argsort(T.detach().cpu().numpy())
+            T_idx = np.argsort(T_batch.detach().cpu().numpy())
             T_plus1 = T + 1
-            AX_Tplus1 = AX[np.where(np.isin(T, T_plus1))[0], :, :]
+            AX_Tplus1 = AX[np.where(np.isin(T_idx, T_plus1))[0], :, :]
 
             coeffs_Tplus1, _, _ = self.model(AX_Tplus1)
 
-            loss_smooth = torch.norm(coeffs_Tplus1 - coeffs[np.isin(T_plus1, T), :, :, :], p=2)
+            loss_smooth = torch.norm(coeffs_Tplus1 - coeffs[np.isin(T_plus1, T_idx), :, :, :], p=2)
 
             loss = loss_mse + self.lmbd * loss_reg + self.gamma * loss_smooth
             train_loss += loss.item()
@@ -294,9 +288,13 @@ class MAGNI:
             loss.backward()
             self.optimizer.step()
 
-        return train_loss / (batch_idx + 1), train_loss_mse / (batch_idx + 1), \
-            train_loss_reg / (batch_idx + 1), train_loss_smooth / (batch_idx + 1)
-    
+        return (
+            train_loss / (batch_idx + 1),
+            train_loss_mse / (batch_idx + 1),
+            train_loss_reg / (batch_idx + 1),
+            train_loss_smooth / (batch_idx + 1),
+        )
+
     def train(self) -> nn.Module:
         """
         Train the model.
@@ -309,28 +307,25 @@ class MAGNI:
         self.model.init_weights()
         best_loss = np.inf
         best_model = None
-        history = {
-            "train_loss": [],
-            "train_loss_mse": [],
-            "train_loss_reg": [],
-            "train_loss_smooth": []
-        }
-        
+        history = {"train_loss": [], "train_loss_mse": [], "train_loss_reg": [], "train_loss_smooth": []}
+
         with Progress() as progress:
             task = progress.add_task("[cyan]Training...", total=self.max_iter)
 
             for epoch in range(self.max_iter):
-                train_loss, train_loss_mse, train_loss_reg, train_loss_smooth = self._train_epoch(self.model, self.AX, self.Y, self.T)
+                train_loss, train_loss_mse, train_loss_reg, train_loss_smooth = self._train_epoch(
+                    self.model, self.AX, self.Y, self.T
+                )
                 self.scheduler.step(train_loss)
 
                 progress.update(
                     task,
                     advance=1,
                     description=f"[bold black]Epoch {epoch+1}[/] | "
-                                f"[bold red]Loss: {train_loss:.4f}[/] "
-                                f"([black]MSE: {train_loss_mse:.4f}[/], "
-                                f"[black]Reg: {train_loss_reg:.4f}[/], "
-                                f"[black]Smooth: {train_loss_smooth:.4f}[/])"
+                    f"[bold red]Loss: {train_loss:.4f}[/] "
+                    f"([black]MSE: {train_loss_mse:.4f}[/], "
+                    f"[black]Reg: {train_loss_reg:.4f}[/], "
+                    f"[black]Smooth: {train_loss_smooth:.4f}[/])",
                 )
 
                 history["train_loss"].append(train_loss)
@@ -342,7 +337,7 @@ class MAGNI:
                     best_loss = train_loss
                     best_epoch = epoch
                     best_model = self.model.state_dict()
-                
+
                 if (self.early_stopping) and (epoch - best_epoch >= self.patience):
                     logg.info("Early stopping at epoch " + str(epoch))
                     break
@@ -353,12 +348,14 @@ class MAGNI:
         self.model.history = history
 
         return self.model
-    
-    def regulation_inference(self, 
-                            cv_thres: float = 0.2, 
-                            filter: List = ["quantile", 0.90, True],
-                            acts_method: str = "mlm", 
-                            save_atten: bool = True) -> GRNMuData:
+
+    def regulation_inference(
+        self,
+        cv_thres: float = 0.2,
+        filter: list = ["quantile", 0.90, True],
+        acts_method: str = "mlm",
+        save_atten: bool = True,
+    ) -> GRNMuData:
         """
         Estimate causal structure.
 
@@ -378,7 +375,6 @@ class MAGNI:
         GRNMuData
             Gene regulatory network object.
         """
-        
         logg.info("Starting regulation inference...")
         self.model.eval()
         ## shape of coeffs_final: N × K x p x q
@@ -387,9 +383,11 @@ class MAGNI:
             for batch_idx, (AX, _, _) in enumerate(self._data_loader(self.AX, self.Y, self.T, shuffle=False)):
                 AX = AX.to(self.device)
                 coeffs, _, atten_w = self.model(AX)
-                coeffs = coeffs.permute(0,1,3,2)
-                coeffs_total[batch_idx*self.batch_size:(batch_idx+1)*self.batch_size, :, :, :] = coeffs.detach().cpu().numpy()
-    
+                coeffs = coeffs.permute(0, 1, 3, 2)
+                coeffs_total[batch_idx * self.batch_size : (batch_idx + 1) * self.batch_size, :, :, :] = (
+                    coeffs.detach().cpu().numpy()
+                )
+
         # Compute CV of the coefficients
         if cv_thres is not None:
             logg.info(f"Computing CV of the coefficients with {cv_thres}...")
@@ -397,16 +395,16 @@ class MAGNI:
             # filter out the coefficients with CV less than cv_thres
             cv_mask = np.expand_dims(cv_coeffs < cv_thres, axis=0)
             coeffs_final = coeffs_total * cv_mask
-        else: 
+        else:
             coeffs_final = coeffs_total
 
         median_signed_coeffs = np.median(coeffs_final, axis=0)  # Shape: (K, p, q)
-        median_abs_coeffs = np.median(np.abs(coeffs_final), axis=0) # Shape: (K, p, q)
+        median_abs_coeffs = np.median(np.abs(coeffs_final), axis=0)  # Shape: (K, p, q)
 
         multiscale_network = np.squeeze(median_signed_coeffs)
         ensemble_network_strength = np.max(median_abs_coeffs, axis=0)
         ensemble_network_activation = np.max(median_signed_coeffs, axis=0)
-        
+
         # multiscale_network = np.squeeze(np.median(coeffs_final, axis=0)) # K x p x q
         # ensemble_network = np.max(np.median(np.abs(coeffs_final), axis=0), axis=0) # p x q
         # ensemble_network = np.max(np.median(coeffs_final, axis=0), axis=0)
@@ -414,25 +412,21 @@ class MAGNI:
         logg.info("Estimating time lags...")
         norm_lags = self.estimate_lags(multiscale_network)
         logg.debug(f"Time lags shape: {norm_lags.shape}")
-        
+
         logg.info("Formulating network edges...")
         edges = get_edgedf(
-            ensemble_network_strength, 
+            ensemble_network_strength,
             ensemble_network_activation,
-            multiscale_network, 
+            multiscale_network,
             norm_lags,
             self.reg_names,
-            self.target_names
+            self.target_names,
         )
-        
+
         # compute TF activity
         logg.info("Computing TF activity...")
-        net_df = pd.DataFrame({
-            "source": edges["TF"],
-            "target": edges["Target"],
-            "weight": edges["signed_score"]
-        })
-        
+        net_df = pd.DataFrame({"source": edges["TF"], "target": edges["Target"], "weight": edges["signed_score"]})
+
         dc.mt.decouple(
             self.adata_fil,
             net=net_df,
@@ -444,31 +438,25 @@ class MAGNI:
 
         logg.info("Creating GRNMuData object...")
         # create GRNMuData Object
-        gdata = GRNMuData(data=self.data.copy(), 
-                        network=edges,
-                        tf_act=acts)
-        
+        gdata = GRNMuData(data=self.data.copy(), network=edges, tf_act=acts)
+
         gdata["GRN"].var["mean_activity"] = gdata["GRN"].X.A.mean(axis=0)
-        
+
         logg.debug(f"GRNMuData object: {gdata}")
-    
+
         # filter the network
         if filter is not None:
             logg.info(f"Filtering network by {filter[0]} with params {filter[1]}...")
-            filtered_edges = filter_network(edges, 
-                                            method=filter[0], 
-                                            param=filter[1],
-                                            binarize=filter[2],
-                                            attri="score")
+            filtered_edges = filter_network(edges, method=filter[0], param=filter[1], binarize=filter[2], attri="score")
 
             gdata.uns["filtered_network"] = filtered_edges
-        
+
         if save_atten:
             logg.info("Saving attention weights...")
             gdata.uns["attention_weights"] = atten_w.detach().cpu().numpy()
-    
+
         return gdata
-    
+
     def estimate_lags(self, multiscale_network: NDArray) -> NDArray:
         """
         Estimate optimal lags.
@@ -483,12 +471,11 @@ class MAGNI:
         NDArray
             Normalized lags.
         """
-        est_lags = F.normalize(torch.Tensor(multiscale_network).permute(1,2,0), p=1,dim=-1).detach().cpu().numpy()
-        norm_lags = np.abs((est_lags*(np.arange(self.lag)+1)).sum(-1))
-        
+        est_lags = F.normalize(torch.Tensor(multiscale_network).permute(1, 2, 0), p=1, dim=-1).detach().cpu().numpy()
+        norm_lags = np.abs((est_lags * (np.arange(self.lag) + 1)).sum(-1))
+
         return norm_lags
-    
-    
+
     def save(self, filename: str):
         """
         Save the trained model's state dictionary.
@@ -506,7 +493,7 @@ class MAGNI:
         """
         Load a trained model's state dictionary from a file.
 
-        You must initialize the MAGNI class with the same parameters 
+        You must initialize the MAGNI class with the same parameters
         as the saved model before calling this method.
 
         Parameters
@@ -521,4 +508,3 @@ class MAGNI:
         # Set the model to evaluation mode, as it's typically used for inference after loading
         self.model.eval()
         logg.info("Model loaded successfully.")
-    

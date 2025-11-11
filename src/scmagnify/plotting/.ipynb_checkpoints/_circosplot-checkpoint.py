@@ -114,9 +114,9 @@ def circosplot(
         default_link_kws.update(link_kws)
     if label_kws is not None:
         default_label_kws.update(label_kws)
-        
+
     adata = _get_data_modal(data, modal)
-    
+
     # Extract Regulon data
     if regulon_key not in data.uns:
         raise KeyError(f"Key '{regulon_key}' not found in `adata.uns`.")
@@ -148,7 +148,7 @@ def circosplot(
     # Initialize Circos sectors
     sectors = {"Lag": len(lag_df), "TF": top_tfs}
     circos = Circos(sectors, **default_circos_kws, **kwargs)
-    
+
     # ------------
     # Sector: Lag
     # ------------
@@ -156,7 +156,7 @@ def circosplot(
     x = np.arange(len(lag_df)) + 0.5
     # xlabels = lag_df.index
     xlabels = np.arange(len(lag_df)) + 1
-    
+
     y = np.arange(len(lag_df.columns)) + 0.5
     ylabels = [f"R{i+1}" for i in range(len(lag_df.columns))]
 
@@ -165,9 +165,9 @@ def circosplot(
     track1.axis()
     track1.xticks(x, xlabels, outer=True, label_size=default_label_kws["label_size"])
     track1.heatmap(lag_df.values.T, **default_heatmap_kws1)
-    
+
     track1.yticks(y, ylabels, label_size=default_label_kws["label_size"]-3)
-    
+
     # Track 2: Arrow plot for TF
     track2 = sector.add_track((45, 55))
     track2.arrow(0, len(lag_df), head_length=4, shaft_ratio=1.0, fc="#F3C9AF", ec="gray", lw=0.5)
@@ -215,13 +215,13 @@ def circosplot(
                 tf_x = matrix_filtered.index.get_loc(tf)
                 for i in range(tf_matrix.shape[0]):
                     if tf_matrix[i] == 1:
-                        circos.link(("TF", tf_x + 0.5, tf_x + 0.5), ("TF", i + 0.5, i + 0.5), color="red", lw=2, alpha=1)    
+                        circos.link(("TF", tf_x + 0.5, tf_x + 0.5), ("TF", i + 0.5, i + 0.5), color="red", lw=2, alpha=1)
 
     # Add colorbars
     if colorbar:
         circos.colorbar(bounds=(1.1, 0.25, 0.2, 0.02), vmin=-1, vmax=1, cmap="Reds", label="Lag", orientation="horizontal")
         circos.colorbar(bounds=(1.1, 0.1, 0.2, 0.02), vmin=-1, vmax=1, cmap="RdBu_r", label="TF", orientation="horizontal")
-        
+
     # Plot and save
     fig = circos.plotfig(figsize=figsize)
     if save:

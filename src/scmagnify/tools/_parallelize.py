@@ -1,16 +1,14 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING
 
 ## import other packages
 from joblib import Parallel
 from tqdm.auto import tqdm
+
 ## from scmagnify import ..
-from scmagnify import logging as logg
+
 
 class ProgressParallel(Parallel):
-    def __init__(
-        self, use_tqdm=True, total=None, file=None, desc=None, *args, **kwargs
-    ):
+    def __init__(self, use_tqdm=True, total=None, file=None, desc=None, *args, **kwargs):
         self._use_tqdm = use_tqdm
         self._total = total
         self._desc = desc

@@ -30,7 +30,7 @@ class GRNMuData(MuData):
             tf_act: pd.DataFrame,
             network: pd.DataFrame
             ):
-        
+
         # Determine if the input is AnnData or MuData
         if isinstance(data, AnnData):
             # If AnnData, create a new MuData object
@@ -47,36 +47,36 @@ class GRNMuData(MuData):
             super().__init__(modalities)  # Initialize with the updated modalities
         else:
             raise TypeError("Data must be either AnnData or MuData.")
-        
+
         # Add network to uns
         self.uns = data.uns
         self.uns["network"] = network
-        
+
     def __repr__(self):
-        
+
         text = f"Gene Regulatory Network (GRN) with {self.uns['network'].shape[0]} edges.\n"
-        text += super().__repr__() 
-        
+        text += super().__repr__()
+
         # text = Text(text)
         # text.stylize("bold underline", 0, 26)
         return text
-    
+
     def __class__(self):
         return "GRNMuData"
-        
+
     def write(self, filename: str):
         """
         Write the GRNMuData object to a file.
         """
         write_h5mu(filename, self)
-        
+
     def to_nx(self, network_key="filtered_network") -> nx.DiGraph:
         """
         Convert the GRN to a networkx DiGraph object.
         """
         if network_key not in self.uns:
             raise ValueError("Network not found in uns.")
-        
+
         df = self.uns[network_key]
         # Validate the DataFrame
         if df.shape[1] < 3:
@@ -95,26 +95,26 @@ class GRNMuData(MuData):
             G.add_edge(regulator, target, **attributes)
 
         return G
-    
+
     def to_cyto(self) -> str:
         """
         Convert the GRN to a Cytoscape JSON object.
         """
         network = self.uns["network"]
         return network.to_json(orient="records")
-    
+
     def filter(self, **kwargs):
         """
         Filter the GRN based on the specified attribute.
         """
         network = self.uns["network"].copy()
         filtered_network = filter_network(network, **kwargs)
-        
+
         # Update the network in uns
         self.uns["filtered_network"] = filtered_network
-        
-        
-    
+
+
+
 def read(filename: str) -> Union[GRNMuData, MuData]:
     """
     Read GRNMuData object from a file.
@@ -124,4 +124,3 @@ def read(filename: str) -> Union[GRNMuData, MuData]:
         return GRNMuData(mdata, mdata.mod["GRN"], mdata.uns["network"])
     else:
         return mdata
-

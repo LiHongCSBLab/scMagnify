@@ -41,8 +41,8 @@ def _set_log_file(settings):
     name = settings.logpath
     root = settings._root_logger
     console = Console(theme=custom_theme)
-    h = RichHandler(markup=True, 
-                    show_time=False, 
+    h = RichHandler(markup=True,
+                    show_time=False,
                     show_path=False,
                     log_time_format="[%Y-%m-%d %H:%M:%S]",
                     console=console,
@@ -57,7 +57,7 @@ def _set_log_file(settings):
         raise RuntimeError("scMagnify's root logger somehow got more than one handler.")
 
     root.addHandler(h)
-    
+
 
 # settings = copy.copy(settings)
 # settings._root_logger = _RootLogger(settings.verbosity)
@@ -104,7 +104,7 @@ def set_workspace(path, logging=False):
     # Create the main working directory if it doesn't exist
     if not os.path.exists(path):
         os.makedirs(path)
-        
+
     settings.work_dir = path
     # Define subdirectories
     data_dir = os.path.join(path, 'data')
@@ -129,7 +129,7 @@ def set_workspace(path, logging=False):
             os.makedirs(log_dir)
         settings.logpath = os.path.join(log_dir, 'scmagnify.log')
         _set_log_file(settings)
-        
+
     # Display the directory structure using rich.tree
     console = Console()
     tree = Tree(f"[bold white]workspace: {path}[/bold white]")
@@ -141,7 +141,7 @@ def set_workspace(path, logging=False):
         log_node = tree.add(f"[white]log[/white]")
         log_node.add(f"[magenta]scmagnify.log[/magenta]")
     console.print(tree)
-    
+
 
 # ----------------------
 # Reference Genome Setup
@@ -151,9 +151,9 @@ settings.gtf_file = None
 settings.fasta_file = None
 settings.tf_file = None
 
-def set_genome(version: str, 
+def set_genome(version: str,
                provider: str = "UCSC",
-               genomes_dir: str = None, 
+               genomes_dir: str = None,
                download: bool = False):
     """
     Set the reference genome for the analysis using genomepy.
@@ -168,12 +168,12 @@ def set_genome(version: str,
         The directory where the genome files are stored. Default is None.
     download : bool, optional
         If True, download the genome files if not found. Default is False.
-        
+
     """
     import genomepy
     # Set the genome version in settings
     settings.version = version
-    
+
     # Check if the genome is installed
     if genomes_dir is None:
         genomes_dir = settings.genomes_dir
@@ -191,19 +191,18 @@ def set_genome(version: str,
             settings.fasta_file = os.path.join(genomes_dir, version, f"{version}.fa")
         else:
             raise FileNotFoundError(f"Genome files for {version} not found. \n Please download the genome files using genomepy.install_genome() or set download=True.")
-        
+
     scm_dir = os.path.dirname(scm.__file__)
     settings.tf_file = os.path.join(scm_dir, "data", "tf_lists", f"allTFs_{version}.txt")
     if not os.path.exists(settings.tf_file):
         raise FileNotFoundError(f"Transcription factor list for {version} not found. \n Please download the TF list using scmagnify.download_tf_list() or set download=True.")
-    
+
     console = Console()
-    
+
     table = Table(title="Genome Information")
     table.add_column("Version", style="cyan")
     table.add_column("Provider", style="magenta")
     table.add_column("Directory", style="magenta")
-    
+
     table.add_row(version, provider, genomes_dir)
     console.print(table)
-    

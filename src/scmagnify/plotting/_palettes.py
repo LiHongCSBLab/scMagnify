@@ -1,4 +1,4 @@
-from typing import Mapping, Sequence
+from collections.abc import Mapping, Sequence
 
 from matplotlib import cm, colors
 
@@ -84,16 +84,15 @@ additional_colors = {
 
 
 def _plot_color_cylce(clists: Mapping[str, Sequence[str]]):
-    import numpy as np
-
     import matplotlib.pyplot as plt
+    import numpy as np
     from matplotlib.colors import BoundaryNorm, ListedColormap
 
-    fig, axes = plt.subplots(nrows=len(clists))  
+    fig, axes = plt.subplots(nrows=len(clists))
     fig.subplots_adjust(top=0.95, bottom=0.01, left=0.3, right=0.99)
     axes[0].set_title("Color Maps/Cycles", fontsize=14)
 
-    for ax, (name, clist) in zip(axes, clists.items()):
+    for ax, (name, clist) in zip(axes, clists.items(), strict=False):
         n = len(clist)
         ax.imshow(
             np.arange(n)[None, :].repeat(2, 0),
@@ -113,6 +112,4 @@ def _plot_color_cylce(clists: Mapping[str, Sequence[str]]):
 
 
 if __name__ == "__main__":
-    _plot_color_cylce(
-        {name: colors for name, colors in globals().items() if isinstance(colors, list)}
-    )
+    _plot_color_cylce({name: colors for name, colors in globals().items() if isinstance(colors, list)})

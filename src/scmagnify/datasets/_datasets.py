@@ -1,23 +1,23 @@
 """Datasets"""
+
 from __future__ import annotations
-from typing import TYPE_CHECKING
 
 import os
+import shutil
 import stat
+from typing import TYPE_CHECKING
 
-import pandas as pd
 import pooch
 from pooch import Decompress, Untar, Unzip
 
-import scmagnify as scm
 import scmagnify.logging as logg
 from scmagnify.settings import settings
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-    from typing import Optional
+    pass
 
-__all__ = ["fetch_scm_data",  "human_tcelldep_bm", "human_aki_ckd", "mouse_pancreas"]
+__all__ = ["fetch_scm_data", "human_tcelldep_bm", "human_aki_ckd", "mouse_pancreas"]
+
 
 def process_downloaded_file(fname, action, pooch):
     """
@@ -59,19 +59,17 @@ def process_downloaded_file(fname, action, pooch):
 
 
 # def fetch_scm_data():
-    # """Fetch the scMagnify datasets.
+# """Fetch the scMagnify datasets.
 
-    # Returns
-    # -------
-    # str
-    #     The path to the scMagnify datasets.
-    # """
-    # data_path = SCM_DATA.fetch("scmagnify_data.zip", processor=process_downloaded_file)
+# Returns
+# -------
+# str
+#     The path to the scMagnify datasets.
+# """
+# data_path = SCM_DATA.fetch("scmagnify_data.zip", processor=process_downloaded_file)
 
-    # logg.info(f"scMagnify data are stored in `{data_path}`.")
+# logg.info(f"scMagnify data are stored in `{data_path}`.")
 
-
-import shutil  
 
 def fetch_scm_data():
     """
@@ -79,7 +77,7 @@ def fetch_scm_data():
 
     This function performs the following steps:
     1. Downloads 'scmagnify_data.zip' using pooch.
-    2. Unzips it using the default pooch processor, which creates a 
+    2. Unzips it using the default pooch processor, which creates a
        'scmagnify_data.zip.unzip' directory.
     3. Moves the subdirectory 'scmagnify_data.zip.unzip/data/' to the cache root
        and renames it to 'scm_data/'.
@@ -94,7 +92,7 @@ def fetch_scm_data():
     def unzip_and_move(fname, action, pooch_instance):
         """
         A custom processor for pooch.
-        
+
         Parameters
         ----------
         fname : str
@@ -109,20 +107,18 @@ def fetch_scm_data():
         str
             The path to the final processed data directory.
         """
-
         cache_dir = pooch_instance.path
         final_data_path = os.path.join(cache_dir, "scm_data")
 
         if os.path.exists(final_data_path):
             logg.info(f"Data already processed and available at: {final_data_path}")
             return final_data_path
-        
+
         unzipper = pooch.Unzip()
-        unzipped_files = unzipper(fname, action, pooch_instance)
-        
+        unzipper(fname, action, pooch_instance)
 
         source_path = os.path.join(fname + ".unzip", "data")
-        
+
         dest_path = final_data_path
 
         logg.info(f"Moving from '{source_path}' to '{dest_path}'...")
@@ -133,7 +129,7 @@ def fetch_scm_data():
             )
 
         shutil.move(source_path, dest_path)
-        
+
         try:
             shutil.rmtree(fname + ".unzip")
             logg.info(f"Cleaned up temporary directory: {fname + '.unzip'}")
@@ -146,7 +142,7 @@ def fetch_scm_data():
 
     SCM_DATA = pooch.create(
         path=pooch.os_cache("scmagnify"),
-        base_url="https://zenodo.org/records/17440841/files/", 
+        base_url="https://zenodo.org/records/17440841/files/",
         env="SCMAGNIFY_DATA",
         registry={
             "scmagnify_data.zip": "md5:a8d6c7712dd8b6fad7f6ce617d44c819",
@@ -157,9 +153,8 @@ def fetch_scm_data():
 
     settings.scm_caches = os.environ.get("SCMAGNIFY_DATA", pooch.os_cache("scmagnify"))
     settings.scm_data = data_path
-    
-    return str(data_path)
 
+    return str(data_path)
 
 
 # def scm_data():
@@ -173,25 +168,17 @@ def fetch_scm_data():
 #     data_path = SCM_DATA.fetch("scmagnify_data.zip", processor=process_downloaded_file)
 #     return str(data_path)
 
+
 def human_tcelldep_bm():
     """Get the path to the human_tcelldep-bm dataset."""
     pass
+
 
 def human_aki_ckd():
     """Get the path to the human_aki-ckd dataset."""
     pass
 
+
 def mouse_pancreas():
     """Get the path to the mouse_pancreas dataset."""
     pass
-
-
-
-
-
-
-
-
-
-
-

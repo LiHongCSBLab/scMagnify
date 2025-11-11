@@ -3,47 +3,54 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import matplotlib as mpl
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 import seaborn as sns
-import matplotlib as mpl
 
-from scmagnify import logging as logg
-from scmagnify.plotting._utils import savefig_or_show, _setup_rc_params, _format_title, _label_features
-from scmagnify.utils import _get_data_modal, _validate_varm_key, d, inject_docs
+from scmagnify.plotting._utils import _format_title, _label_features, _setup_rc_params, savefig_or_show
+from scmagnify.utils import _get_data_modal, _validate_varm_key, d
 
 if TYPE_CHECKING:
-    from scmagnify import GRNMuData
-    from typing import Literal, Union, Optional, List, Tuple
+    from typing import Literal
+
     from anndata import AnnData
-    from mudata import MuData
-    from matplotlib.figure import Figure
     from matplotlib.axes import Axes
+    from mudata import MuData
+
+    from scmagnify import GRNMuData
 
 __all__ = ["rankplot"]
+
 
 def _plot_single_rank(
     ax: Axes,
     df: pd.DataFrame,
     col: str,
     cmap: str,
-    selected_genes: Optional[List[str]],
+    selected_genes: list[str] | None,
     n_top: int,
     font_scale: float,
-    xlabel: Optional[str],
-    ylabel: Optional[str],
+    xlabel: str | None,
+    ylabel: str | None,
     **kwargs,
 ):
     """Plot a single ranking subplot and label genes."""
     df_sorted = df.sort_values(by=col, ascending=False)
-    
+
     # 1. Plot the scatter points
     ax.scatter(
-        np.arange(len(df_sorted)), df_sorted[col], c=df_sorted[col], cmap=cmap,
-        s=30, edgecolor="white", linewidth=0.5, **kwargs
+        np.arange(len(df_sorted)),
+        df_sorted[col],
+        c=df_sorted[col],
+        cmap=cmap,
+        s=30,
+        edgecolor="white",
+        linewidth=0.5,
+        **kwargs,
     )
-    
+
     # 2. Determine which genes to label
     if selected_genes:
         gene_list = [gene for gene in selected_genes if gene in df_sorted.index]
@@ -59,38 +66,39 @@ def _plot_single_rank(
             labels_to_plot=gene_list,
             font_scale=font_scale,
         )
-    
+
     # 4. Set plot aesthetics
     ax.set_xlabel(xlabel if xlabel else "Gene Rank")
     ax.set_ylabel(ylabel if ylabel else "Score")
     ax.set_title(_format_title(col))
     sns.despine(ax=ax)
 
+
 @d.dedent
 def rankplot(
-    data: Union[AnnData, MuData, GRNMuData],
+    data: AnnData | MuData | GRNMuData,
     modal: Literal["GRN", "RNA", "ATAC"] = "GRN",
     key: str = "network_score",
     n_top: int = 5,
     cmap: str = "Reds",
-    selected_genes: Optional[List[str]] = None,
-    xlabel: Optional[str] = "Gene Rank",
-    ylabel: Optional[str] = "Score",
+    selected_genes: list[str] | None = None,
+    xlabel: str | None = "Gene Rank",
+    ylabel: str | None = "Score",
     swap_df: bool = False,
-    figsize: Optional[Tuple[float, float]] = None,
-    dpi: Optional[int] = 150,
-    nrows: Optional[int] = None,
+    figsize: tuple[float, float] | None = None,
+    dpi: int | None = 150,
+    nrows: int | None = None,
     ncols: int = 3,
-    wspace: Optional[float] = 0.5,
-    hspace: Optional[float] = 0.5,
+    wspace: float | None = 0.5,
+    hspace: float | None = 0.5,
     sharex: bool = False,
     sharey: bool = False,
-    context: Optional[str] = "notebook",
-    default_context: Optional[dict] = None,
-    theme: Optional[str] = "white",
+    context: str | None = "notebook",
+    default_context: dict | None = None,
+    theme: str | None = "white",
     font_scale: float = 1,
-    show: Optional[bool] = None,
-    save: Optional[str] = None,
+    show: bool | None = None,
+    save: str | None = None,
     **kwargs,
 ):
     """Plot ranked features per group with label annotations.
@@ -145,7 +153,12 @@ def rankplot(
             figsize = (fig_width, fig_height)
 
         fig, axes = plt.subplots(
-            nrows=nrows, ncols=ncols, figsize=figsize, dpi=dpi, sharex=sharex, sharey=sharey,
+            nrows=nrows,
+            ncols=ncols,
+            figsize=figsize,
+            dpi=dpi,
+            sharex=sharex,
+            sharey=sharey,
             gridspec_kw={"wspace": wspace, "hspace": hspace} if wspace or hspace else None,
         )
         axes = np.atleast_1d(axes).flatten()
@@ -154,8 +167,7 @@ def rankplot(
         for i, col in enumerate(df.columns):
             ax = axes[i]
             _plot_single_rank(
-                ax, df, col, cmap, selected_genes, n_top, font_scale,
-                xlabel=xlabel, ylabel=ylabel, **kwargs
+                ax, df, col, cmap, selected_genes, n_top, font_scale, xlabel=xlabel, ylabel=ylabel, **kwargs
             )
 
         # Hide unused subplots

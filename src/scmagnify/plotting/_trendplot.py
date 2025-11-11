@@ -1,48 +1,51 @@
 """Trend plot."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import matplotlib as mpl
+import matplotlib.axes
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from scipy.sparse import issparse
 import seaborn as sns
-import matplotlib as mpl
-import matplotlib.pyplot as plt
-import matplotlib.axes
+from scipy.sparse import issparse
 
-from scmagnify import logging as logg
-from scmagnify.utils import _get_data_modal, _get_X, d, inject_docs
 from scmagnify.plotting._utils import (
+    _convolve,
+    _gam,
+    _polyfit,
     _setup_rc_params,
+    find_indices,
     interpret_colorkey,
     is_categorical,
     savefig_or_show,
     set_colors_for_categorical_obs,
     strings_to_categoricals,
     to_list,
-    find_indices,
-    _gam,
-    _convolve,
-    _polyfit,
 )
+from scmagnify.utils import _get_data_modal, _get_X, d
 
 if TYPE_CHECKING:
-    from typing import Literal, Union, Optional, List, Dict, Tuple
+    from typing import Literal
+
     from anndata import AnnData
     from mudata import MuData
+
     from scmagnify import GRNMuData
 
 __all__ = ["trendplot", "plot_trend_grid"]
 
+
 @d.dedent
 def trendplot(
-    data: Union[AnnData, MuData, GRNMuData],
-    var_dict: Dict[str, Union[str, List[Tuple[str, str]]]],
+    data: AnnData | MuData | GRNMuData,
+    var_dict: dict[str, str | list[tuple[str, str]]],
     sortby: str = "pseudotime",
-    palette: Optional[Union[str, List[str]]] = "tab10",
+    palette: str | list[str] | None = "tab10",
     tkey_cmap: str = "Spectral_r",
-    col_color: Optional[Union[str, List[str]]] = None,
+    col_color: str | list[str] | None = None,
     smooth_method: Literal["gam", "convolve", "polyfit", "none"] = "gam",
     normalize: bool = True,
     mask: float = 0.05,
@@ -53,22 +56,22 @@ def trendplot(
     label_centroid: bool = False,
     swap_x: bool = False,
     show_tkey: bool = True,
-    figsize: Optional[tuple] = None,
+    figsize: tuple | None = None,
     dpi: int = 300,
-    nrows: Optional[int] = 1,
-    ncols: Optional[int] = 1,
-    wspace: Optional[float] = 0.4,
-    hspace: Optional[float] = None,
-    sharex: Optional[bool] = False,
-    sharey: Optional[bool] = False,
-    context: Optional[str] = "notebook",
-    default_context: Optional[dict] = None,
-    theme: Optional[str] = "ticks",
-    font_scale: Optional[float] = 1,
-    title: Optional[str] = None,
-    ax: Optional[matplotlib.axes.Axes] = None,
+    nrows: int | None = 1,
+    ncols: int | None = 1,
+    wspace: float | None = 0.4,
+    hspace: float | None = None,
+    sharex: bool | None = False,
+    sharey: bool | None = False,
+    context: str | None = "notebook",
+    default_context: dict | None = None,
+    theme: str | None = "ticks",
+    font_scale: float | None = 1,
+    title: str | None = None,
+    ax: matplotlib.axes.Axes | None = None,
     show: bool = True,
-    save: Optional[str] = None,
+    save: str | None = None,
     **kwargs,
 ) -> matplotlib.axes.Axes:
     """Plot variable trends along a sorted dimension (e.g., pseudotime).
@@ -115,11 +118,16 @@ def trendplot(
     rc_params = _setup_rc_params(context, default_context, font_scale, theme)
 
     with mpl.rc_context(rc_params):
-    
         if ax is None:
-            fig, ax = plt.subplots(figsize=figsize, dpi=dpi, nrows=nrows, ncols=ncols,
-                                   sharex=sharex, sharey=sharey,
-                                   gridspec_kw={"wspace": wspace, "hspace": hspace})
+            fig, ax = plt.subplots(
+                figsize=figsize,
+                dpi=dpi,
+                nrows=nrows,
+                ncols=ncols,
+                sharex=sharex,
+                sharey=sharey,
+                gridspec_kw={"wspace": wspace, "hspace": hspace},
+            )
             _figure_created_internally = True
         else:
             fig = ax.get_figure()
@@ -157,15 +165,13 @@ def trendplot(
             elif isinstance(modalities, list):
                 if all(isinstance(mod, str) for mod in modalities):
                     modalities = [(mod, None) for mod in modalities]
-                elif all(
-                    isinstance(mod, tuple) and len(mod) == 2 for mod in modalities
-                ):
+                elif all(isinstance(mod, tuple) and len(mod) == 2 for mod in modalities):
                     pass
                 else:
                     raise ValueError(
                         "modalities should be a list of modality names or a list of (modality, layer) tuples."
                     )
-                
+
             for modal, layer in modalities:
                 time_sorted = time_sorted_raw.copy()
                 if modal not in data.mod:
@@ -173,7 +179,7 @@ def trendplot(
                 adata_mod = data.mod[modal]
                 if var not in adata_mod.var_names:
                     raise ValueError(f"Variable {var} not found in {modal} modality.")
-                
+
                 log1p_norm = False
                 if layer == "log1p_norm":
                     log1p_norm = True
@@ -189,16 +195,12 @@ def trendplot(
                 if mask > 0 and modal == "GRN":
                     lower_bound = np.quantile(time_sorted, mask)
                     upper_bound = np.quantile(time_sorted, 1 - mask)
-                    mask_indices = adata_sorted.obs_names[
-                        (time_sorted < lower_bound) | (time_sorted > upper_bound)
-                    ]
+                    mask_indices = adata_sorted.obs_names[(time_sorted < lower_bound) | (time_sorted > upper_bound)]
                     df.loc[mask_indices] = 0
 
-                time_sorted_bins = np.linspace(
-                    time_sorted.min(), time_sorted.max(), df.shape[0]
-                )
+                time_sorted_bins = np.linspace(time_sorted.min(), time_sorted.max(), df.shape[0])
 
-                df_stds = None # Initialize df_stds
+                df_stds = None  # Initialize df_stds
                 # Smooth data based on the specified method
                 if smooth_method == "gam":
                     new_index = find_indices(adata_sorted.obs[sortby], time_sorted_bins)
@@ -233,7 +235,7 @@ def trendplot(
                     color=curve_color,  # Use modulo for color cycling
                     linewidth=2,
                     label=label,
-                    **kwargs
+                    **kwargs,
                 )
                 if show_stds and df_stds is not None:
                     stds = df_stds[var].values.flatten()
@@ -309,11 +311,10 @@ def trendplot(
                         color=col_data[j] if not issparse(col_data) else col_data.toarray()[j],
                     )
                     ax.add_patch(rect)
-                
+
                 import matplotlib.transforms as transforms
-                blended_transform = transforms.blended_transform_factory(
-                    ax.transAxes, ax.transData
-                )
+
+                blended_transform = transforms.blended_transform_factory(ax.transAxes, ax.transData)
 
                 title_text = f"{col_colors_names[i]}"
                 text_x_pos = 1.03
@@ -323,19 +324,19 @@ def trendplot(
                     # and alignment should change, not its coordinate system.
                     # A fixed position is better.
                     ha = "left"
-                
+
                 ax.text(
                     text_x_pos,
-                    y + color_bar_height / 2, # Y is in data coords
+                    y + color_bar_height / 2,  # Y is in data coords
                     title_text,
                     ha=ha,
                     va="center",
                     fontsize=13,
-                    transform=blended_transform, # Use the correct blended transform
+                    transform=blended_transform,  # Use the correct blended transform
                 )
 
         ax.set_ylim(lower_bound - 0.05, upper_bound + color_bar_height)
-        
+
         # --- START OF MODIFICATIONS ---
         # Set title if provided
         if title:
@@ -374,8 +375,9 @@ def trendplot(
             savefig_or_show("trendplot", save=save, show=show)
             if not show:
                 plt.close(fig)
-            
+
     return ax
+
 
 def plot_trend_grid(
     data,
@@ -383,13 +385,13 @@ def plot_trend_grid(
     ncols: int = 3,
     sortby: str = "palantir_pseudotime",
     modalities: list[str] = None,
-    color_map: dict = ["#C53D26","#CA5A03"],
+    color_map: dict = ["#C53D26", "#CA5A03"],
     sharey: bool = True,
     show_stds: bool = True,
     subplot_size: tuple[int, int] = (6, 4),
     legend_title: str = "Modalities",
     save: str = None,
-    **kwargs
+    **kwargs,
 ):
     """
     Generates a grid of trend plots for a given list of variables.
@@ -424,8 +426,8 @@ def plot_trend_grid(
     """
     # Use default modalities if not provided
     if modalities is None:
-        modalities = ['RNA', 'GRN']
-        
+        modalities = ["RNA", "GRN"]
+
     # Handle the case of an empty list to avoid errors
     if not var_names:
         print("Warning: The list of variables to plot is empty. No plot will be generated.")
@@ -434,10 +436,10 @@ def plot_trend_grid(
     # --- 1. Calculate grid dimensions and create figure ---
     nrows = (len(var_names) + ncols - 1) // ncols  # Calculate number of rows needed
     total_plots = nrows * ncols
-    
+
     # Calculate figure size based on subplot size and grid dimensions
     figsize = (ncols * subplot_size[0], nrows * subplot_size[1])
-    
+
     fig, axes = plt.subplots(nrows, ncols, figsize=figsize, sharey=sharey)
 
     # Flatten axes array for easy iteration, handling single-row/col cases
@@ -459,13 +461,13 @@ def plot_trend_grid(
             label_centroid=False,
             show=False,  # Important: prevent showing plot inside the loop
             title=var_name,
-            **kwargs
+            **kwargs,
         )
-        
+
         # Tidy up subplots by removing unnecessary y-labels
-        if i % ncols != 0: # If it's not the first plot in a row
-            current_ax.set_ylabel('')
-        
+        if i % ncols != 0:  # If it's not the first plot in a row
+            current_ax.set_ylabel("")
+
         # Remove individual legends to make way for a single figure legend
         if current_ax.get_legend() is not None:
             current_ax.get_legend().remove()
@@ -477,17 +479,17 @@ def plot_trend_grid(
     # --- 4. Create a single, unified legend for the entire figure ---
     handles, labels = axes[0].get_legend_handles_labels()
     # Clean up labels (e.g., from "RNA - PAX5" to "RNA")
-    cleaned_labels = sorted(list(set([label.split(' - ')[0] for label in labels])))
-    
+    cleaned_labels = sorted({label.split(" - ")[0] for label in labels})
+
     # Re-order handles to match the cleaned_labels if necessary
-    handle_dict = {label.split(' - ')[0]: handle for label, handle in zip(labels, handles)}
+    handle_dict = {label.split(" - ")[0]: handle for label, handle in zip(labels, handles, strict=False)}
     ordered_handles = [handle_dict[lbl] for lbl in cleaned_labels]
 
     fig.legend(
         ordered_handles,
         cleaned_labels,
-        loc='upper right',
-        bbox_to_anchor=(1.0, 0.98), # Adjust anchor to avoid overlap
+        loc="upper right",
+        bbox_to_anchor=(1.0, 0.98),  # Adjust anchor to avoid overlap
         title=legend_title,
         fontsize=12,
         title_fontsize=14,
@@ -495,13 +497,14 @@ def plot_trend_grid(
     if save:
         plt.savefig(save, bbox_inches="tight", dpi=300)
     # --- 5. Adjust layout and show the final plot ---
-    fig.tight_layout(rect=[0, 0, 0.98, 1]) # Make space for the legend
+    fig.tight_layout(rect=[0, 0, 0.98, 1])  # Make space for the legend
     plt.show()
+
 
 # def _gam(df, time_sorted, time_sorted_bins, n_splines, new_index, log1p_norm=False):
 #     """
 #     Smooth data using Generalized Additive Model (GAM).
-    
+
 #     Returns two DataFrames: one for predictions and one for standard deviations.
 #     """
 #     df_s_pred = pd.DataFrame(index=new_index, columns=df.columns)
@@ -515,7 +518,7 @@ def plot_trend_grid(
 #         )
 #         df_s_pred[gene] = y_pred
 #         df_s_stds[gene] = stds
-        
+
 #     return df_s_pred, df_s_stds
 
 # def _convolve(df, time_sorted, n_convolve):
@@ -536,6 +539,3 @@ def plot_trend_grid(
 #         p = np.polyfit(time_sorted, df[gene].values, n_deg)
 #         df_s[gene] = np.polyval(p, time_sorted_bins)
 #     return df_s
-
-
-

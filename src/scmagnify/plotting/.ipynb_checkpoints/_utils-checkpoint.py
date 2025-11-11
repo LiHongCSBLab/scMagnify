@@ -170,7 +170,7 @@ def is_list_or_array(key) -> bool:
             The input to check.
 
     Returns
-    -------    
+    -------
         bool: True if the input is a list, tuple, or numpy array, False otherwise.
     """
     return isinstance(key, (list, tuple, np.record, np.ndarray))
@@ -294,8 +294,8 @@ def strings_to_categoricals(adata):
         c = Categorical(c)
         if 1 < len(c.categories) < min(len(c), 100):
             df[key] = c
-            
-            
+
+
 def get_figure_params(figsize=None, dpi=None, ncols=1):
     """
     Get the figure size and DPI based on the provided parameters or default settings.
@@ -1616,10 +1616,10 @@ def rgb_custom_colormap(
 def _setup_rc_params(context: Optional[str], default_context: Optional[dict], font_scale: Optional[float], theme: Optional[str]):
     """Set up rcParams for plotting."""
     rc_params = default_context.copy() if default_context is not None else DEFAULT_CONTEXT.copy()
-    
+
     # Validate and load fonts
     rc_params["font.sans-serif"] = _validate_and_load_fonts(rc_params["font.sans-serif"])
-    
+
     if context:
         rc_params.update(sns.plotting_context(context))
     if theme:
@@ -1903,10 +1903,10 @@ def _format_title(title: str) -> str:
     """
     # Replace underscores with spaces and apply title case
     formatted = title.replace("_", " ").title()
-    
+
     # Convert text within parentheses to lowercase
     def lowercase_match(match):
         return f"({match.group(1).lower()})"
-    
+
     formatted = re.sub(r"\(([^)]+)\)", lowercase_match, formatted)
     return formatted

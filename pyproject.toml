@@ -3,7 +3,7 @@ build-backend = "hatchling.build"
 requires = [ "hatchling" ]
 
 [project]
-name = "scMagnify"
+name = "scmagnify"
 version = "0.0.1"
 description = "scMagnify is a versatile Python toolkit for inferring and analyzing gene regulatory networks (GRNs) from single-cell multi-omic datasets"
 readme = "README.md"
@@ -23,29 +23,29 @@ classifiers = [
   "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
-  "rich >=10.0.0",
-  "scanpy >=1.9.0,<1.10.4",
-  "anndata <=0.10.0",
-  "mudata <=0.2.3",
-  "torch >=2.0.0", 
-  "cellrank >=2.0.0",
-  "SEACells >=0.3.3",
-  "decoupler >=2.1.1",
-  "genomepy >=0.16.1",
-  "pyarrow <=20.0.0",
-  "pysam >=0.23.1",
-  "pycirclize <1.10.1",
-  "PyComplexHeatmap >=1.8.2",
+  "anndata<=0.10",
+  "cellrank>=2",
+  "decoupler>=2.1.1",
+  "deprecated",
+  "genomepy>=0.16.1",
+  "moods-python",
+  "mudata<=0.2.3",
   "netgraph",
-  "pillow <12.0.0",
+  "pillow<12",
   "pooch",
-  "MOODS-python",
-  "pytabix",
+  "pyarrow<=20",
+  "pycirclize<1.10.1",
+  "pycomplexheatmap>=1.8.2",
   "pygam",
   "pyranges",
-  "tensorly",
+  "pysam>=0.23.1",
+  "pytabix",
+  "rich>=10",
+  "scanpy>=1.9,<1.10.4",
+  "seacells>=0.3.3",
   "session-info",
-  "deprecated"
+  "tensorly",
+  "torch>=2",
 ]
 
 optional-dependencies.dev = [
@@ -73,7 +73,7 @@ optional-dependencies.doc = [
 optional-dependencies.test = [
   "coverage",
   "pytest",
-  "tox"
+  "tox",
 ]
 # https://docs.pypi.org/project_metadata/#project-urls
 urls.Documentation = "https://scMagnify.readthedocs.io/"
@@ -128,9 +128,34 @@ lint.ignore = [
   "E731", # Do not assign a lambda expression, use a def -> lambda expression assignments are convenient
   "E741", # allow I, O, l as variable names -> I is the identity matrix
 ]
-lint.per-file-ignores."*/__init__.py" = [ "F401" ]
+lint.extend-ignore = [
+  "B006",
+  "B007",
+  "B904",
+  "BLE001",
+  "C401",
+  "C408",
+  "C416",
+  "D200",
+  "D205",
+  "E711",
+  "E712",
+  "E722",
+  "F403",
+  "F405",
+  "F841",
+  "UP038",
+]
+
+lint.per-file-ignores."*/__init__.py" = [ "F401", "F403" ]
 lint.per-file-ignores."docs/*" = [ "I" ]
-lint.per-file-ignores."tests/*" = [ "D" ]
+lint.per-file-ignores."src/scmagnify/__init__.py" = [ "F403" ]
+lint.per-file-ignores."src/scmagnify/logging/_logging.py" = [ "F822" ]
+lint.per-file-ignores."src/scmagnify/models/_train.py" = [ "F403", "F405" ]
+
+lint.per-file-ignores."src/scmagnify/utils/__init__.py" = [ "F403" ]
+
+lint.per-file-ignores."tests/*" = [ "D", "F841" ]
 lint.pydocstyle.convention = "numpy"
 
 [tool.pytest.ini_options]
@@ -157,8 +182,3 @@ skip = [
   "docs/references.md",
   "docs/notebooks/example.ipynb",
 ]
-
-
-
-
-

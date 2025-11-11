@@ -1,31 +1,36 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 import os
 import subprocess
+from typing import TYPE_CHECKING
+
+import matplotlib as mpl
+import matplotlib.gridspec as gridspec
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pyranges as pr
 import seaborn as sns
-import matplotlib as mpl
-import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
-from matplotlib.patches import Rectangle, Arc
 from matplotlib.collections import PatchCollection
+from matplotlib.patches import Arc, Rectangle
 
-from scmagnify import settings, logging as logg
-from scmagnify.plotting._utils import savefig_or_show, _setup_rc_params, _format_title
-from scmagnify.plotting._docs import doc_params, GROUPS as _G
-from scmagnify.utils import _get_data_modal, _validate_varm_key
+from scmagnify import logging as logg
+from scmagnify import settings
+from scmagnify.plotting._docs import GROUPS as _G
+from scmagnify.plotting._docs import doc_params
+from scmagnify.plotting._utils import _setup_rc_params, savefig_or_show
+from scmagnify.utils import _get_data_modal
 
 if TYPE_CHECKING:
-    from typing import Literal, Union, Optional, List, Dict
+    from typing import Literal
+
     from anndata import AnnData
     from mudata import MuData
+
     from scmagnify import GRNMuData
 
 __all__ = ["coverageplot"]
+
 
 def _pyranges_from_strings(pos_list: pd.Series) -> pr.PyRanges:
     """Convert position strings to PyRanges object."""
@@ -34,6 +39,7 @@ def _pyranges_from_strings(pos_list: pd.Series) -> pr.PyRanges:
     end = pos_list.str.split(":").str.get(1).str.split("-").str.get(1).astype(int)
     return pr.PyRanges(chromosomes=chr, starts=start, ends=end)
 
+
 def _pyranges_to_strings(peaks: pr.PyRanges) -> np.ndarray:
     """Convert PyRanges peaks to position strings."""
     chr = peaks.Chromosome.astype(str).values
@@ -41,15 +47,16 @@ def _pyranges_to_strings(peaks: pr.PyRanges) -> np.ndarray:
     end = peaks.End.astype(str).values
     return chr + ":" + start + "-" + end
 
+
 def compute_coverage(
     adata: AnnData,
-    fragment_files: Dict[str, str],
+    fragment_files: dict[str, str],
     region: str,
     barcodes: pd.Series,
     out_prefix: str,
-    smooth: Optional[int] = None,
+    smooth: int | None = None,
     normalize: bool = False,
-    frag_type: str = "All"
+    frag_type: str = "All",
 ) -> pd.Series:
     """Compute coverage for a given region and barcodes."""
     import tabix
@@ -73,8 +80,7 @@ def compute_coverage(
 
     with open(f"{out_prefix}.coverage.bed", "w") as out_file:
         subprocess.call(
-            ["bedtools", "coverage", "-a", f"{out_prefix}.region.bed", "-b", f"{out_prefix}.bed", "-d"],
-            stdout=out_file
+            ["bedtools", "coverage", "-a", f"{out_prefix}.region.bed", "-b", f"{out_prefix}.bed", "-d"], stdout=out_file
         )
 
     df = pd.read_csv(f"{out_prefix}.coverage.bed", sep="\t", header=None)
@@ -100,16 +106,17 @@ def compute_coverage(
 
     return coverage
 
+
 def _plot_coverage(
     coverage: pd.Series,
     track_name: str = "Coverage",
-    ax: Optional[plt.Axes] = None,
+    ax: plt.Axes | None = None,
     color: str = "#ff7f00",
     min_coverage: float = 0,
-    ylim: Optional[List[float]] = None,
+    ylim: list[float] | None = None,
     fill: bool = True,
     linestyle: str = "-",
-    y_font: Optional[int] = None
+    y_font: int | None = None,
 ) -> None:
     """Plot coverage track."""
     if ax is None:
@@ -132,17 +139,15 @@ def _plot_coverage(
     ax.set_ylabel(track_name, rotation=90, labelpad=10)
     sns.despine(ax=ax)
 
+
 def _plot_bed(
-    plot_peaks: pr.PyRanges,
-    track_name: str = "Bed",
-    ax: Optional[plt.Axes] = None,
-    facecolor: str = "#ff7f00"
+    plot_peaks: pr.PyRanges, track_name: str = "Bed", ax: plt.Axes | None = None, facecolor: str = "#ff7f00"
 ) -> None:
     """Plot BED track with peak rectangles."""
     if ax is None:
         ax = plt.gca()
 
-    rects = [Rectangle((s, -0.45), e - s, 0.9) for s, e in zip(plot_peaks.Start, plot_peaks.End)]
+    rects = [Rectangle((s, -0.45), e - s, 0.9) for s, e in zip(plot_peaks.Start, plot_peaks.End, strict=False)]
     ax.add_collection(PatchCollection(rects, facecolor=facecolor, edgecolor="black"))
     ax.set_ylim([-1, 1])
     ax.set_yticks([])
@@ -150,13 +155,14 @@ def _plot_bed(
     ax.axes.get_xaxis().set_visible(False)
     sns.despine(ax=ax, bottom=True)
 
+
 def _plot_gene(
     genes: pr.PyRanges,
-    ax: Optional[plt.Axes] = None,
-    track_name: Optional[str] = "Genes",
+    ax: plt.Axes | None = None,
+    track_name: str | None = "Genes",
     facecolor: str = "#377eb8",
     exon_height: float = 0.9,
-    utr_height: float = 0.4
+    utr_height: float = 0.4,
 ) -> None:
     """Plot gene track with exons and UTRs."""
     if ax is None:
@@ -170,73 +176,88 @@ def _plot_gene(
 
         utrs = gene_pr[gene_pr.Feature.astype(str).str.contains("utr")]
         if len(utrs) > 0:
-            rects = [Rectangle((s, -utr_height / 2), e - s, utr_height) for s, e in zip(utrs.Start, utrs.End)]
+            rects = [
+                Rectangle((s, -utr_height / 2), e - s, utr_height) for s, e in zip(utrs.Start, utrs.End, strict=False)
+            ]
             ax.add_collection(PatchCollection(rects, facecolor=facecolor, edgecolor="black"))
 
         cds = gene_pr[gene_pr.Feature.astype(str).str.contains("CDS")]
         if len(cds) == 0:
             cds = gene_pr[gene_pr.Feature.astype(str).str.contains("exon")]
-        rects = [Rectangle((s, -exon_height / 2), e - s, exon_height) for s, e in zip(cds.Start, cds.End)]
+        rects = [Rectangle((s, -exon_height / 2), e - s, exon_height) for s, e in zip(cds.Start, cds.End, strict=False)]
         ax.add_collection(PatchCollection(rects, facecolor=facecolor, edgecolor="black"))
 
         ax.text(
-            (gs + ge) / 2, 0.6, gene,
-            horizontalalignment="center", fontsize=10,
-            fontstyle="normal", fontweight="bold", family="Arial"
+            (gs + ge) / 2,
+            0.6,
+            gene,
+            horizontalalignment="center",
+            fontsize=10,
+            fontstyle="normal",
+            fontweight="bold",
+            family="Arial",
         )
 
     # ax.set_ylabel(track_name if track_name else "", rotation=90, labelpad=10)
     ax.set_yticks([])
     sns.despine(ax=ax)
 
+
 def _plot_links(links: pd.DataFrame, ax: plt.Axes) -> None:
     """Plot links track with arcs."""
-    for start, end, cor in zip(links["start"], links["end"], links["cor"]):
+    for start, end, cor in zip(links["start"], links["end"], links["cor"], strict=False):
         center = (start + end) / 2
         width = abs(center - start) * 2
         arc = Arc(
-            (center, 0), width, width, angle=0, theta1=180, theta2=360,
-            lw=1.25, color=sns.color_palette("Reds", as_cmap=True)(cor)
+            (center, 0),
+            width,
+            width,
+            angle=0,
+            theta1=180,
+            theta2=360,
+            lw=1.25,
+            color=sns.color_palette("Reds", as_cmap=True)(cor),
         )
         ax.add_patch(arc)
 
     ax.set_ylim([min(-abs((links["end"] + links["start"]) / 2 - links["start"])) - 100, 0])
     ax.set_axis_off()
 
-@doc_params(general=_G["general"], coverage=_G["coverage"], labels=_G["labels"]) 
+
+@doc_params(general=_G["general"], coverage=_G["coverage"], labels=_G["labels"])
 def coverageplot(
-    data: Union[AnnData, MuData, GRNMuData],
+    data: AnnData | MuData | GRNMuData,
     modal: Literal["GRN", "RNA", "ATAC"] = "ATAC",
-    region: Optional[str] = None,
-    anchor_gene: Optional[str] = None,
+    region: str | None = None,
+    anchor_gene: str | None = None,
     anchor_flank: int = 500000,
-    cluster: Optional[str] = "celltype",
-    cluster_order: Optional[List[str]] = None,
-    cluster_colors: Optional[pd.DataFrame] = None,
-    delimiter: Optional[str] = "#",
-    peak_groups: Optional[pd.Series] = None,
-    gtf: Optional[pr.PyRanges] = None,
-    fragment_files: Optional[Dict[str, str]] = None,
-    links: Optional[Union[bool, pd.DataFrame]] = None,
-    genes: Optional[Union[List[str], pd.DataFrame]] = None,
-    highlight_peaks: Optional[pr.PyRanges] = None,
+    cluster: str | None = "celltype",
+    cluster_order: list[str] | None = None,
+    cluster_colors: pd.DataFrame | None = None,
+    delimiter: str | None = "#",
+    peak_groups: pd.Series | None = None,
+    gtf: pr.PyRanges | None = None,
+    fragment_files: dict[str, str] | None = None,
+    links: bool | pd.DataFrame | None = None,
+    genes: list[str] | pd.DataFrame | None = None,
+    highlight_peaks: pr.PyRanges | None = None,
     fig_width: float = 10.0,
     plot_cov_size: float = 1.0,
     plot_bed_size: float = 0.2,
-    y_font: Optional[int] = 8,
+    y_font: int | None = 8,
     frag_type: str = "All",
     min_coverage: float = 0,
     smooth: int = 75,
     normalize: bool = True,
     common_scale: bool = False,
     collapsed: bool = False,
-    context: Optional[str] = None,
-    default_context: Optional[dict] = None,
-    theme: Optional[str] = "white",
-    font_scale: Optional[float] = 1,
-    save: Optional[str] = None,
-    show: Optional[bool] = None
-) -> Optional[plt.Figure]:
+    context: str | None = None,
+    default_context: dict | None = None,
+    theme: str | None = "white",
+    font_scale: float | None = 1,
+    save: str | None = None,
+    show: bool | None = None,
+) -> plt.Figure | None:
     """Plot coverage and genomic tracks for a region or anchor gene.
 
     Parameters
@@ -264,7 +285,7 @@ def coverageplot(
 
         if cluster not in adata.obs.columns:
             raise ValueError(f"Cluster '{cluster}' not found in adata.obs.")
-        
+
         # Remove the cluster with cells < 5
         adata.obs[cluster] = adata.obs[cluster].astype("category")
         counts = adata.obs[cluster].value_counts()
@@ -309,7 +330,11 @@ def coverageplot(
             tss = gtf[(gtf.gene_name == anchor_gene) & (gtf.Feature == "gene")]
             if tss.empty:
                 raise ValueError(f"Gene {anchor_gene} not found in GTF.")
-            chr, start, end = tss.Chromosome.values[0], tss.End.values[0] - anchor_flank, tss.End.values[0] + anchor_flank
+            chr, start, end = (
+                tss.Chromosome.values[0],
+                tss.End.values[0] - anchor_flank,
+                tss.End.values[0] + anchor_flank,
+            )
             region = f"{chr}:{start}-{end}"
             logg.debug(f"Using region {region} for anchor gene {anchor_gene}.")
         elif region is None:
@@ -348,8 +373,14 @@ def coverageplot(
         # Compute coverage
         coverages = {
             k: compute_coverage(
-                adata, fragment_files, region, barcode_groups[k], "/tmp/",
-                smooth, normalize if k != "Single-cell" else False, frag_type
+                adata,
+                fragment_files,
+                region,
+                barcode_groups[k],
+                "/tmp/",
+                smooth,
+                normalize if k != "Single-cell" else False,
+                frag_type,
             )
             for k in barcode_groups.index
         }
@@ -378,23 +409,24 @@ def coverageplot(
                         raise ValueError(f"Gene {anchor_gene} not found in GTF.")
                     gene_start = tss.Start.values[0] if tss.Strand.values[0] == "+" else tss.End.values[0]
                     links_str = selected_links.index
-                    links_df = pd.DataFrame({
-                        "start": np.repeat(gene_start, len(links_str)),
-                        "end": (
-                            links_str.str.split(":").str.get(1).str.split("-").str.get(0).astype(int) +
-                            links_str.str.split(":").str.get(1).str.split("-").str.get(1).astype(int)
-                        ) / 2,
-                        "cor": selected_links["cor"].values
-                    })
+                    links_df = pd.DataFrame(
+                        {
+                            "start": np.repeat(gene_start, len(links_str)),
+                            "end": (
+                                links_str.str.split(":").str.get(1).str.split("-").str.get(0).astype(int)
+                                + links_str.str.split(":").str.get(1).str.split("-").str.get(1).astype(int)
+                            )
+                            / 2,
+                            "cor": selected_links["cor"].values,
+                        }
+                    )
                     logg.debug(f"Links for anchor gene {anchor_gene} processed.")
             else:
                 if not {"start", "end", "cor"}.issubset(links_df.columns):
                     raise ValueError("`links` DataFrame must contain 'start', 'end', and 'cor' columns.")
-                links_df = pd.DataFrame({
-                    "start": links_df["start"].astype(int),
-                    "end": links_df["end"].astype(int),
-                    "cor": links_df["cor"]
-                })
+                links_df = pd.DataFrame(
+                    {"start": links_df["start"].astype(int), "end": links_df["end"].astype(int), "cor": links_df["cor"]}
+                )
             logg.debug(f"Links DataFrame processed: {links_df.head()}")
 
         # Setup figure
@@ -447,16 +479,13 @@ def coverageplot(
                 ax.set_xlim([pr_region.Start[0], pr_region.End[0]])
                 plot_index += 1
             _ylim = [0, 2] if row == "Single-cell" else ylim
-            _plot_coverage(
-                coverages[row], row, ax, colors[row], min_coverage, _ylim,
-                not collapsed, y_font=y_font
-            )
+            _plot_coverage(coverages[row], row, ax, colors[row], min_coverage, _ylim, not collapsed, y_font=y_font)
             if plot_index != n_rows:
                 ax.set_xticks([])
 
             if highlight_peaks is not None:
                 highlight_peaks = highlight_peaks.overlap(pr_region)
-                for s, e in zip(highlight_peaks.Start, highlight_peaks.End):
+                for s, e in zip(highlight_peaks.Start, highlight_peaks.End, strict=False):
                     rect = Rectangle((s, 0), e - s, ax.get_ylim()[1], color="black", alpha=0.07, zorder=1000)
                     ax.add_patch(rect)
 

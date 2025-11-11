@@ -9,9 +9,12 @@ Only add or edit texts here when normalizing parameter naming across
 plotting APIs. Other modules can import and reuse these snippets without
 changing their own code yet.
 """
+
 from __future__ import annotations
-from typing import Any
+
 from textwrap import dedent
+from typing import Any
+
 from docrep import DocstringProcessor
 
 _all_ = ["d", "inject_docs"]
@@ -30,6 +33,7 @@ def inject_docs(**kwargs: Any):
         return decorator2
 
     return decorator
+
 
 _adata = """\
 adata
@@ -61,7 +65,7 @@ seed
 
 _device = """\
 device
-    Device to run the computation on. Can be a string like 'cpu', 'cuda', 
+    Device to run the computation on. Can be a string like 'cpu', 'cuda',
     'cuda:0', or an integer specifying the CUDA device index (e.g., 0).
     If a CUDA device is requested but is not available, it will
     automatically fall back to 'cpu'."""
@@ -164,11 +168,9 @@ d = DocstringProcessor(
     modal=_modal,
     layer=_layer,
     time_key=_time_key,
-
     # General Settings
     seed=_seed,
     device=_device,
-
     n_jobs=_n_jobs,
     smooth=_smooth,
     smooth_method=_smooth_method,
@@ -179,35 +181,11 @@ d = DocstringProcessor(
     standard_scale=_standard_scale,
     normalize=_normalize,
     normalize_data=_normalize_data,
-
     # Plotting
     plotting_theme=_plotting_theme,
     subplots_params=_subplots_params,
     cmap=_cmap,
     palette=_palette,
-
     save=_save,
     show=_show,
-    
 )
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

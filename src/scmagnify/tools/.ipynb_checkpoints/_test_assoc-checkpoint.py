@@ -29,27 +29,27 @@ __all__ = ["test_association"]
 def _test_assoc(data: List[Dict[str, Any]],
                spline_df: int = 5) -> List[float]:
     """Feature selection test
-    
+
     Parameters
     ----------
     data : List[Dict[str, Any]]
-        List of input data, first element is a dictionary of input data, 
+        List of input data, first element is a dictionary of input data,
         second element is the target data
-    spline_df : int 
+    spline_df : int
         Number of spline degrees of freedom
-        
+
     Returns
     -------
     List[float]
         p-value and amplitude of the fitted GAM model
     """
-    
+
     t = data[0]["t"]
     exp = data[1]
-    
+
     gam = GAM(s(0, n_splines=spline_df)).fit(t, exp)
     gam_res =  {"d": gam.logs_['deviance'][-1], "df": gam.statistics_["deviance"], "p": gam.predict(t)}
-    
+
     odf = gam_res["df"] - 1
     gam0 = GAM().fit(np.ones(t.shape[0]), exp)
 
@@ -78,7 +78,7 @@ def test_association(
     n_jobs: int = 10,
 ) -> Union[AnnData, MuData]:
     """Test association between genes and pseudotime
-    
+
     Parameters
     ----------
     data : Union[AnnData, MuData]
@@ -97,7 +97,7 @@ def test_association(
         Amplitude cutoff.
     n_jobs : int, optional, default: 10
         Number of jobs to run in parallel.
-        
+
     Updates
     -------
     Updates adata with the following:
@@ -110,7 +110,7 @@ def test_association(
             True for genes that pass the cutoffs.
         .uns["test_assoc"] : dict
             Parameters used for the test.
-    
+
     Returns
     -------
     Union[AnnData, MuData]
@@ -120,7 +120,7 @@ def test_association(
             - A: amplitude of the fitted GAM model.
             - fdr: false discovery rate.
     """
-    
+
     # check if data is AnnData or MuData
     adata = _get_data_modal(data, modal)
     # get the expression data
@@ -132,7 +132,7 @@ def test_association(
     df["t"] = df[pseudo_time_key]
 
     X_t = list(zip([df] * len(Xgenes), Xgenes))
-    
+
     logg.info(f"Testing association between [bright_cyan]{layer}[/bright_cyan] gene expression and [bright_cyan]{pseudo_time_key}[/bright_cyan]...")
     stat = ProgressParallel(
             use_nested=True,
@@ -140,7 +140,7 @@ def test_association(
             desc="Test Association",
             n_jobs=n_jobs,
             )(delayed(_test_assoc)(X_t[d], spline_df) for d in range(len(X_t)))
-    
+
     stat = pd.DataFrame(stat, index=adata.var_names, columns=["p_val", "A"])
     stat["fdr"] = multipletests(stat.p_val, method="bonferroni")[1]
     stat.sort_values("A", ascending=False)
@@ -148,7 +148,7 @@ def test_association(
     # store the results in adata.varm
     adata.varm["test_assoc_res"] = stat
     adata.var["significant_genes"] = (stat.fdr < fdr_cutoff) & (stat.A > A_cutoff)
-    
+
     # store the parameters in adata.uns
     adata.uns["test_assoc"] = {
         "pseudo_time_key": pseudo_time_key,
@@ -156,9 +156,9 @@ def test_association(
         "fdr_cutoff": fdr_cutoff,
         "A_cutoff": A_cutoff,
     }
-    
+
     logg.info(".varm['test_assoc_res'] --> added \n.var['significant_genes'] --> added \n.uns['test_assoc'] --> added")
-        
+
     table = Table(title="Feature Association Statistics", show_header=True, header_style="bold white")
     table.add_column("Metric", style="cyan", justify="right")
     table.add_column("Value", style="green")
@@ -166,10 +166,10 @@ def test_association(
     table.add_row("Total Genes", f"{adata.n_vars:,}")
     table.add_row("Thresholds", f"FDR < {fdr_cutoff}, A > {A_cutoff}")
     table.add_row("Significant genes (n, %)", f"{sum(adata.var['significant_genes']):,} ({sum(adata.var['significant_genes']) / adata.n_vars * 100:.2f}%)")
-        
+
     console = Console()
     console.print(table)
-    
+
     if isinstance(data, MuData):
         data.update()
         return data

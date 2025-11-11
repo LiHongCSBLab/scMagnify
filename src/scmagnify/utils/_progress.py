@@ -2,16 +2,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from joblib import Parallel
+
 ## import other packages
 from rich.progress import BarColumn, Progress, TextColumn, TimeElapsedColumn
-from joblib import Parallel
+
 ## from scmagnify import ..
-from scmagnify import logging as logg
 
 if TYPE_CHECKING:
-    from typing import Literal, Union, Optional
-    from anndata import AnnData
-    from mudata import MuData
+    pass
 
 __all__ = ["ProgressParallel", "init_progress"]
 
@@ -52,8 +51,8 @@ class NestedProgress(Progress):
             if footer:
                 self.columns = (footer_column, "")
             yield self.make_tasks_table([task])
-            
-            
+
+
 def init_progress(progress, verbosity, level):
     started = False
     if verbosity < level:
@@ -69,11 +68,11 @@ class ProgressParallel(Parallel):
     def __init__(
         self,
         use_nested: bool = True,  # Use NestedProgress by default
-        total: Optional[int] = None,
-        desc: Optional[str] = None,
+        total: int | None = None,
+        desc: str | None = None,
         level: int = 1,  # Nesting level for NestedProgress
         *args,
-        **kwargs
+        **kwargs,
     ):
         """
         Initialize ProgressParallel.
@@ -89,8 +88,8 @@ class ProgressParallel(Parallel):
         self._total = total
         self._desc = desc
         self._level = level
-        self._progress: Optional[NestedProgress] = None
-        self._task_id: Optional[int] = None
+        self._progress: NestedProgress | None = None
+        self._task_id: int | None = None
         super().__init__(*args, **kwargs)
 
     def __call__(self, iterable):
@@ -100,7 +99,8 @@ class ProgressParallel(Parallel):
         Args:
             iterable: An iterable of tasks to execute in parallel.
 
-        Returns:
+        Returns
+        -------
             The result of the parallel execution.
         """
         if self._use_nested:

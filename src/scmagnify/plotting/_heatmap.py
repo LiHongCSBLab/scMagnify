@@ -1,62 +1,64 @@
 """Heatmap plot."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from scipy.sparse import issparse
 import seaborn as sns
-import matplotlib.pyplot as plt
-from PyComplexHeatmap import HeatmapAnnotation, anno_label, anno_simple, ClusterMapPlotter
+from PyComplexHeatmap import ClusterMapPlotter, HeatmapAnnotation, anno_label, anno_simple
 
-from scmagnify import logging as logg
-from scmagnify.utils import _get_data_modal, _get_X, d, inject_docs
 from scmagnify.plotting._utils import (
+    _convolve,
+    _gam,
+    _polyfit,
+    find_indices,
     savefig_or_show,
     set_colors_for_categorical_obs,
     strings_to_categoricals,
-    find_indices,
-    _gam,
-    _convolve,
-    _polyfit
 )
+from scmagnify.utils import _get_data_modal, _get_X, d
 
 if TYPE_CHECKING:
-    from typing import Literal, Union, Optional, List   
+    from typing import Literal
+
     from anndata import AnnData
     from mudata import MuData
+
     from scmagnify import GRNMuData
-    
+
 __all__ = ["heatmap"]
-    
+
+
 @d.dedent
 def heatmap(
-    data: Union[AnnData, MuData, GRNMuData],
-    var_names: Union[str, List[str]],
+    data: AnnData | MuData | GRNMuData,
+    var_names: str | list[str],
     modal: Literal["GRN", "ATAC", "RNA"] = "GRN",
     layer: str = "mlm_estimated",
     cmap: str = "RdBu_r",
     tkey_cmap: str = "Spectral_r",
-    selected_genes: Optional[List[str]] = None,
-    cell_selection: Optional[List[str]] = None,
+    selected_genes: list[str] | None = None,
+    cell_selection: list[str] | None = None,
     sortby: str = "pseudotime",
     smooth_method: Literal["gam", "convolve", "polyfit"] = "gam",
-    n_splines: Optional[int] = 4,
-    n_deg: Optional[int] = 3,
-    n_convolve: Optional[int] = 30,
+    n_splines: int | None = 4,
+    n_deg: int | None = 3,
+    n_convolve: int | None = 30,
     standard_scale: int = 0,
     sort: bool = True,
-    col_annos: Optional[List[str]] = None,
+    col_annos: list[str] | None = None,
     col_cluster: bool = False,
     row_cluster: bool = False,
-    row_split: Optional[List[str]] = None,
+    row_split: list[str] | None = None,
     figsize: tuple = (8, 4),
     dpi: int = 100,
-    show: Optional[bool] = None,
-    save: Optional[str] = None,
+    show: bool | None = None,
+    save: str | None = None,
     **kwargs,
-) -> Optional[ClusterMapPlotter]:
+) -> ClusterMapPlotter | None:
     """Plot time series for genes as a heatmap.
 
     Parameters
@@ -95,14 +97,13 @@ def heatmap(
     %(show)s
     %(save)s
     kwargs
-        Arguments passed to `ClusterMapPlotter`.    
+        Arguments passed to `ClusterMapPlotter`.
 
     Returns
     -------
     ClusterMapPlotter | None
         Returned when ``show`` is False.
     """
-    
     plt.figure(figsize=figsize, dpi=dpi)
 
     # Get the data for the specified modality
@@ -129,7 +130,7 @@ def heatmap(
     time_sorted_bins = np.linspace(time_sorted.min(), time_sorted.max(), df.shape[0])
     if smooth_method == "gam":
         new_index = find_indices(adata_sorted.obs[sortby], time_sorted_bins)
-        df_s, _= _gam(df, time_sorted, time_sorted_bins, n_splines, new_index)
+        df_s, _ = _gam(df, time_sorted, time_sorted_bins, n_splines, new_index)
     elif smooth_method == "convolve":
         df_s = _convolve(df, time_sorted, n_convolve)
     elif smooth_method == "polyfit":
@@ -140,9 +141,7 @@ def heatmap(
     # Sort genes by their maximum expression
     if sort:
         max_sort = np.argsort(np.argmax(df_s.values, axis=0))
-        df_s = pd.DataFrame(
-            df_s.values[:, max_sort], columns=df_s.columns[max_sort], index=df_s.index
-        )
+        df_s = pd.DataFrame(df_s.values[:, max_sort], columns=df_s.columns[max_sort], index=df_s.index)
     strings_to_categoricals(adata)
 
     # Add column annotations
@@ -160,13 +159,18 @@ def heatmap(
                     col_palette = sns.color_palette("tab20", n_colors=len(adata_sorted.obs[col].cat.categories))
                     set_colors_for_categorical_obs(adata_sorted, col, col_palette)
                 color_palette = dict(
-                    zip(adata_sorted.obs[col].cat.categories, adata_sorted.uns[col + "_colors"])
+                    zip(adata_sorted.obs[col].cat.categories, adata_sorted.uns[col + "_colors"], strict=False)
                 )
                 col_anno = anno_simple(df=col_df[col], colors=color_palette, height=4)
             col_dict[col] = col_anno
 
         col_ha = HeatmapAnnotation(
-            **col_dict, legend_gap=10, hgap=0.5, axis=1, verbose=0, legend_kws={"fontfamily": "Arial", "fontstyle": "normal"}
+            **col_dict,
+            legend_gap=10,
+            hgap=0.5,
+            axis=1,
+            verbose=0,
+            legend_kws={"fontfamily": "Arial", "fontstyle": "normal"},
         )
         kwargs["top_annotation"] = col_ha
 
@@ -176,7 +180,9 @@ def heatmap(
         row_df.name = "Selected"
         row_ha = HeatmapAnnotation(
             selected=anno_label(row_df, frac=0.3, colors="black", size=8),
-            axis=0, verbose=0, label_kws={"rotation": 0, "horizontalalignment": "left", "fontfamily": "Arial", "fontstyle": "normal"}
+            axis=0,
+            verbose=0,
+            label_kws={"rotation": 0, "horizontalalignment": "left", "fontfamily": "Arial", "fontstyle": "normal"},
         )
         kwargs["left_annotation"] = row_ha
 
@@ -211,7 +217,8 @@ def heatmap(
     savefig_or_show("heatmap", save=save, show=show)
     if show is False:
         return cm
-    
+
+
 # def heatmap_sns(
 #     data: Union[AnnData, MuData, GRNMuData],
 #     var_names: Union[str, list[str]],
@@ -296,10 +303,10 @@ def heatmap(
 #     tkey, xkey = kwargs.pop("tkey", sortby), kwargs.pop("xkey", layer)
 #     time = adata.obs[tkey].values
 #     time = time[np.isfinite(time)]
-    
+
 #     time_index = np.argsort(time)
 #     time_sorted = time[time_index]
-    
+
 #     adata_sorted = adata[time_index, :].copy()
 
 #     # X = (
@@ -315,14 +322,14 @@ def heatmap(
 
 #     # Smooth data
 #     if smooth_method == "gam":
-#         time_sorted_bins = np.linspace(time_sorted.min(), time_sorted.max(), n_bins) 
+#         time_sorted_bins = np.linspace(time_sorted.min(), time_sorted.max(), n_bins)
 #         if n_splines is not None:
 #             df_s = pd.DataFrame(index=time_sorted_bins, columns=var_names)
 #             for gene in var_names:
 #                 y_pred, _ = gam_fit_predict(x=time_sorted, y=df[gene].values, pred_x=time_sorted_bins, n_splines=4)
 #                 df_s[gene] = y_pred
-                
-#     elif smooth_method == "convolve":    
+
+#     elif smooth_method == "convolve":
 #         if n_convolve is not None:
 #             df_s = pd.DataFrame(index=time_sorted, columns=var_names)
 #             weights = np.ones(n_convolve) / n_convolve
@@ -333,7 +340,7 @@ def heatmap(
 #                 except ValueError as e:
 #                     logg.info(f"Skipping variable {gene}: {e}")
 #                     pass  # e.cm. all-zero counts or nans cannot be convolved
-                
+
 #     elif smooth_method == "polyfit":
 #         time_sorted_bins = np.linspace(time_sorted.min(), time_sorted.max(), n_bins)
 #         if n_deg is not None:
@@ -344,7 +351,7 @@ def heatmap(
 
 #     else:
 #         df_s = df.copy()
-        
+
 #     if sort:
 #         max_sort = np.argsort(np.argmax(df_s.values, axis=0))
 #         df_s = pd.DataFrame(df_s.values[:, max_sort], columns=df_s.columns[max_sort])
@@ -361,13 +368,13 @@ def heatmap(
 #                 col += "_categorical"
 #                 set_colors_for_categorical_obs(adata, col, tkey_cmap)
 #             col_color.append(interpret_colorkey(adata, col)[np.argsort(time)])
-            
+
 #     if "dendrogram_ratio" not in kwargs:
 #         kwargs["dendrogram_ratio"] = (
 #             0.1 if row_cluster else 0.1,
 #             0.2 if col_cluster else 0,
 #         )
-        
+
 #     if ("cbar_pos" not in kwargs) or (not colorbar):
 #         kwargs["cbar_pos"] = None
 
@@ -378,7 +385,7 @@ def heatmap(
 #             "row_cluster": row_cluster,
 #             "cmap": cmap,
 #             "xticklabels": show_xticklabels,
-#             "yticklabels": show_yticklabels,    
+#             "yticklabels": show_yticklabels,
 #             "standard_scale": standard_scale,
 #             "figsize": figsize,
 #         }
@@ -388,7 +395,7 @@ def heatmap(
 #     if font_scale is not None:
 #         args = {"font_scale": font_scale}
 #         context = context or "notebook"
-        
+
 #     with sns.plotting_context(context=context, **args):
 #         # TODO: Remove exception by requiring appropriate seaborn version
 #         try:
@@ -399,22 +406,22 @@ def heatmap(
 #             kwargs.pop("dendrogram_ratio")
 #             kwargs.pop("cbar_pos")
 #             cm = sns.clustermap(df_s.T, **kwargs)
-    
+
 #     heatmap_ax = cm.ax_heatmap
-    
+
 #     for _, spine in heatmap_ax.spines.items():
 #         # spine.set_visible(True)
 #         spine.set_color('lightgrey')
 #         spine.set_linewidth(1.5)
-    
+
 #     savefig_or_show("heatmap", save=save, show=show)
 #     if show is False:
 #         return cm
-    
-    
+
+
 # def _gam(df, time_sorted, time_sorted_bins, n_splines, new_index):
 #     """Smooth data using Generalized Additive Model (GAM)."""
-    
+
 #     df_s = pd.DataFrame(index=new_index, columns=df.columns)
 #     for gene in df.columns:
 #         y_pred, _ = gam_fit_predict(

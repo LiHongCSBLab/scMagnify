@@ -1,33 +1,29 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional, List, Dict, Set, Tuple, Union
-
 import os
-import numpy as np
-import pandas as pd
-import networkx as nx
 from collections import defaultdict
 
-from rich.table import Table
-from rich.console import Console
-
-import netgraph
 import matplotlib as mpl
-import matplotlib.pyplot as plt
-import matplotlib.figure
 import matplotlib.axes
+import matplotlib.figure
+import matplotlib.pyplot as plt
+import netgraph
+import networkx as nx
+import numpy as np
+import pandas as pd
+from adjustText import adjust_text
 from matplotlib.patches import Circle, Polygon
+from rich.console import Console
+from rich.table import Table
 from scipy.spatial import ConvexHull
 
 from scmagnify import GRNMuData
-from scmagnify.settings import settings
 from scmagnify import logging as logg
-from scmagnify.utils import _str_to_list, d, inject_docs
-from scmagnify.plotting._utils import savefig_or_show, _setup_rc_params
-
-from adjustText import adjust_text
+from scmagnify.plotting._utils import _setup_rc_params, savefig_or_show
+from scmagnify.utils import _str_to_list, d
 
 __all__ = ["GRNVisualizer"]
+
 
 @d.dedent
 class GRNVisualizer:
@@ -58,40 +54,39 @@ class GRNVisualizer:
         """
         Initializes the visualizer.
         """
-
         self.gdata: GRNMuData = gdata
 
         # --- Internal State Attributes ---
-        self._enet_df_cache: Optional[pd.DataFrame] = None # Caches the base triplet network
+        self._enet_df_cache: pd.DataFrame | None = None  # Caches the base triplet network
         self.network_df: pd.DataFrame  # The filtered network to be plotted
-        self.network_type: str = "triplet" # Can be 'triplet' or 'bipartite'
+        self.network_type: str = "triplet"  # Can be 'triplet' or 'bipartite'
         self.G: nx.DiGraph
-        self.tf_nodes: List[str]
-        self.ccre_nodes: List[str]
-        self.target_nodes: List[str]
-        self.tf_nodes_set: Set[str]
-        self.ccre_nodes_set: Set[str]
-        self.target_nodes_set: Set[str]
-        self.tf_to_ccres: Dict[str, List[str]]
-        self.ccre_to_targets: Dict[str, List[str]]
-        self.ccre_to_tfs: Dict[str, List[str]]
-        self.tf_to_targets: Dict[str, List[str]] # For bipartite networks
-        self.target_to_tfs: Dict[str, List[str]] # For bipartite networks
-        self.tf_degrees: Dict[str, int]
-        self.target_clusters: Dict[str, List[str]]
+        self.tf_nodes: list[str]
+        self.ccre_nodes: list[str]
+        self.target_nodes: list[str]
+        self.tf_nodes_set: set[str]
+        self.ccre_nodes_set: set[str]
+        self.target_nodes_set: set[str]
+        self.tf_to_ccres: dict[str, list[str]]
+        self.ccre_to_targets: dict[str, list[str]]
+        self.ccre_to_tfs: dict[str, list[str]]
+        self.tf_to_targets: dict[str, list[str]]  # For bipartite networks
+        self.target_to_tfs: dict[str, list[str]]  # For bipartite networks
+        self.tf_degrees: dict[str, int]
+        self.target_clusters: dict[str, list[str]]
 
         # --- Layout Parameters ---
         self.r_tf: float = 0.5
         self.r_ccre: float = 0.8
         self.r_target: float = 1.3
 
-    def _build_triplet_df(self, net_key = "filtered_network") -> pd.DataFrame:
+    def _build_triplet_df(self, net_key="filtered_network") -> pd.DataFrame:
         """
         Constructs the base TF-peak-gene triplet network (enet_df) from the gdata object.
         The result is cached after the first execution to avoid redundant computations.
 
         Returns
-        --------
+        -------
             pd.DataFrame: A DataFrame with columns ["TF", "peak", "gene"].
         """
         if self._enet_df_cache is not None:
@@ -131,17 +126,14 @@ class GRNVisualizer:
         peak_to_tf_df = pd.merge(filtered_corrs, tf_onehot, left_on="peak", right_index=True)
 
         # 3. Filter by correlation and p-value thresholds
-        peak_to_tf_filtered = peak_to_tf_df[
-            (peak_to_tf_df["cor"] > 0.1) & (peak_to_tf_df["pval"] < 0.05)
-        ].copy()
+        peak_to_tf_filtered = peak_to_tf_df[(peak_to_tf_df["cor"] > 0.1) & (peak_to_tf_df["pval"] < 0.05)].copy()
 
         # 4. Convert the wide TF matrix to a long format (TF, peak, gene)
         df_reset = peak_to_tf_filtered.reset_index()
         id_vars = ["peak", "gene"]
         value_vars = df_reset.columns[4:]
 
-        df_long = df_reset.melt(id_vars=id_vars, value_vars=value_vars,
-                                var_name="TF", value_name="regulates")
+        df_long = df_reset.melt(id_vars=id_vars, value_vars=value_vars, var_name="TF", value_name="regulates")
 
         enet_df = df_long[df_long["regulates"] == 1][["TF", "peak", "gene"]].reset_index(drop=True)
 
@@ -152,8 +144,8 @@ class GRNVisualizer:
             network.columns = ["TF", "gene", "score"]
             network_fil = network.query("score > 0")
 
-            enet_df_fil = pd.merge(enet_df, network_fil[['TF', 'gene']], on=["TF", "gene"], how="inner")
-        
+            enet_df_fil = pd.merge(enet_df, network_fil[["TF", "gene"]], on=["TF", "gene"], how="inner")
+
         # After filtering, update enet_df to the filtered version
         enet_df = enet_df_fil
 
@@ -163,13 +155,13 @@ class GRNVisualizer:
 
     def prepare_network(
         self,
-        regulon: Optional[str] = None,
-        tf_list: Optional[List[str]] = None,
-        tg_list: Optional[List[str]] = None,
+        regulon: str | None = None,
+        tf_list: list[str] | None = None,
+        tg_list: list[str] | None = None,
         net_key: str = "network",
         add_suffixes: bool = True,
-        target_clusters: Optional[Dict[str, List[str]]] = None
-    ) -> "GRNVisualizer":
+        target_clusters: dict[str, list[str]] | None = None,
+    ) -> GRNVisualizer:
         """
         Prepares and filters the network for visualization.
 
@@ -198,9 +190,7 @@ class GRNVisualizer:
             r_tfs = regulon_tf.index[regulon_tf[regulon]]
             r_tgs = regulon_tg.index[regulon_tg[regulon]]
 
-            net_for_plot = base_enet_df[
-                base_enet_df["TF"].isin(r_tfs) & base_enet_df["gene"].isin(r_tgs)
-            ]
+            net_for_plot = base_enet_df[base_enet_df["TF"].isin(r_tfs) & base_enet_df["gene"].isin(r_tgs)]
         elif (tf_list is not None) or (tg_list is not None):
             logg.info("Filtering network based on provided TF and/or Target Gene lists...")
             filtered_df = base_enet_df.copy()
@@ -215,7 +205,7 @@ class GRNVisualizer:
 
         net_for_plot = net_for_plot.reset_index(drop=True)
         net_for_plot.columns = ["TF", "cCRE", "Target"]
-        self.network_type = "triplet" # This method always produces a triplet network
+        self.network_type = "triplet"  # This method always produces a triplet network
 
         if add_suffixes:
             net_for_plot["TF"] = net_for_plot["TF"] + "_TF"
@@ -238,7 +228,7 @@ class GRNVisualizer:
                     for gene in gene_list
                     if (gene + "_TG" if add_suffixes else gene) in targets_in_network
                 ]
-                if filtered_genes: # Only add cluster if it"s not empty after filtering
+                if filtered_genes:  # Only add cluster if it"s not empty after filtering
                     self.target_clusters[cluster_name] = filtered_genes
 
             # Statistics table
@@ -266,8 +256,8 @@ class GRNVisualizer:
         target_col: str = "Target",
         network_type: str = "auto",
         add_suffixes: bool = True,
-        target_clusters: Optional[Dict[str, List[str]]] = None
-    ) -> "GRNVisualizer":
+        target_clusters: dict[str, list[str]] | None = None,
+    ) -> GRNVisualizer:
         """
         Loads a network directly from a DataFrame, bypassing gdata processing.
 
@@ -283,32 +273,33 @@ class GRNVisualizer:
                                               e.g., {"Cluster A": ["GENE1", "GENE2"]}.
                                               If provided, overrides automatic TF-based clustering.
 
-        Returns:
+        Returns
+        -------
             self: The instance itself, to allow for method chaining.
         """
         logg.info("Loading network from provided DataFrame...")
 
         # --- Determine Network Type ---
-        if network_type == 'auto':
+        if network_type == "auto":
             if ccre_col in network_df.columns:
-                self.network_type = 'triplet'
+                self.network_type = "triplet"
                 logg.info("Auto-detected 'triplet' (TF-cCRE-Target) network.")
             else:
-                self.network_type = 'bipartite'
+                self.network_type = "bipartite"
                 logg.info("Auto-detected 'bipartite' (TF-Target) network.")
-        elif network_type in ['triplet', 'bipartite']:
+        elif network_type in ["triplet", "bipartite"]:
             self.network_type = network_type
         else:
             raise ValueError("`network_type` must be 'triplet', 'bipartite', or 'auto'.")
 
         # --- Prepare DataFrame based on Type ---
-        if self.network_type == 'triplet':
+        if self.network_type == "triplet":
             required_cols = [tf_col, ccre_col, target_col]
             if not all(col in network_df.columns for col in required_cols):
                 raise ValueError(f"Triplet network requires columns: {required_cols}")
             net_for_plot = network_df[required_cols].copy()
             net_for_plot.columns = ["TF", "cCRE", "Target"]
-        else: # Bipartite
+        else:  # Bipartite
             required_cols = [tf_col, target_col]
             if not all(col in network_df.columns for col in required_cols):
                 raise ValueError(f"Bipartite network requires columns: {required_cols}")
@@ -335,7 +326,7 @@ class GRNVisualizer:
                     if final_gene_name in targets_in_network:
                         filtered_genes.append(final_gene_name)
 
-                if filtered_genes: # Only add the cluster if it contains genes present in the network
+                if filtered_genes:  # Only add the cluster if it contains genes present in the network
                     self.target_clusters[cluster_name] = filtered_genes
 
             # Statistics table
@@ -369,19 +360,19 @@ class GRNVisualizer:
         self.tf_nodes_set = set(self.network_df["TF"])
         self.target_nodes_set = set(self.network_df["Target"])
 
-        if self.network_type == 'triplet':
+        if self.network_type == "triplet":
             self.ccre_nodes_set = set(self.network_df["cCRE"])
             for _, row in self.network_df.iterrows():
                 self.G.add_edge(row["TF"], row["cCRE"])
                 self.G.add_edge(row["cCRE"], row["Target"])
-        else: # Bipartite
+        else:  # Bipartite
             self.ccre_nodes_set = set()
             for _, row in self.network_df.iterrows():
                 self.G.add_edge(row["TF"], row["Target"])
 
-        self.tf_nodes = sorted(list(self.tf_nodes_set))
-        self.ccre_nodes = sorted(list(self.ccre_nodes_set))
-        self.target_nodes = sorted(list(self.target_nodes_set))
+        self.tf_nodes = sorted(self.tf_nodes_set)
+        self.ccre_nodes = sorted(self.ccre_nodes_set)
+        self.target_nodes = sorted(self.target_nodes_set)
 
     def _analyze_connections(self) -> None:
         """Pre-computes connection lookups for efficiency."""
@@ -389,10 +380,10 @@ class GRNVisualizer:
         tf_names_no_suffix = [tf.replace("_TF", "") for tf in self.tf_nodes]
         self.tf_degrees = {
             tf: self.gdata.uns.get("tf_degrees", {}).get(tf_name, 1)
-            for tf, tf_name in zip(self.tf_nodes, tf_names_no_suffix)
+            for tf, tf_name in zip(self.tf_nodes, tf_names_no_suffix, strict=False)
         }
 
-        if self.network_type == 'triplet':
+        if self.network_type == "triplet":
             self.ccre_to_targets = defaultdict(list)
             self.tf_to_ccres = defaultdict(list)
             self.ccre_to_tfs = defaultdict(list)
@@ -402,7 +393,7 @@ class GRNVisualizer:
                 elif u in self.tf_nodes_set and v in self.ccre_nodes_set:
                     self.tf_to_ccres[u].append(v)
                     self.ccre_to_tfs[v].append(u)
-        else: # Bipartite network
+        else:  # Bipartite network
             self.tf_to_targets = defaultdict(list)
             self.target_to_tfs = defaultdict(list)
             for u, v in self.G.edges():
@@ -410,36 +401,40 @@ class GRNVisualizer:
                     self.tf_to_targets[u].append(v)
                     self.target_to_tfs[v].append(u)
 
-    def _get_optimized_cluster_order(self) -> List[str]:
+    def _get_optimized_cluster_order(self) -> list[str]:
         """Defines target gene clusters (if not provided) and optimizes their angular order."""
         # If clusters were manually provided, don"t override them.
         if not hasattr(self, "_custom_clusters_provided") or not self._custom_clusters_provided:
             # Automatic TF-based clustering (default behavior)
             self.target_clusters = defaultdict(list)
-            if self.network_type == 'triplet':
+            if self.network_type == "triplet":
                 for tf in self.tf_nodes:
                     genes = set(g for c in self.tf_to_ccres.get(tf, []) for g in self.ccre_to_targets.get(c, []))
                     if genes:
                         self.target_clusters[tf.replace("_TF", "")] = list(genes)
-            else: # Bipartite
+            else:  # Bipartite
                 for tf in self.tf_nodes:
                     genes = self.tf_to_targets.get(tf, [])
                     if genes:
-                         self.target_clusters[tf.replace("_TF", "")] = list(genes)
+                        self.target_clusters[tf.replace("_TF", "")] = list(genes)
 
         cluster_connections = defaultdict(lambda: defaultdict(int))
         for tf in self.tf_nodes:
             connected_clusters = set()
-            if self.network_type == 'triplet':
-                 connected_clusters = set(
-                    cid for c in self.tf_to_ccres.get(tf, [])
-                    for t in self.ccre_to_targets.get(c, [])
-                    for cid, targets in self.target_clusters.items() if t in targets
-                )
-            else: # Bipartite
+            if self.network_type == "triplet":
                 connected_clusters = set(
-                    cid for t in self.tf_to_targets.get(tf, [])
-                    for cid, targets in self.target_clusters.items() if t in targets
+                    cid
+                    for c in self.tf_to_ccres.get(tf, [])
+                    for t in self.ccre_to_targets.get(c, [])
+                    for cid, targets in self.target_clusters.items()
+                    if t in targets
+                )
+            else:  # Bipartite
+                connected_clusters = set(
+                    cid
+                    for t in self.tf_to_targets.get(tf, [])
+                    for cid, targets in self.target_clusters.items()
+                    if t in targets
                 )
 
             clist = list(connected_clusters)
@@ -458,10 +453,8 @@ class GRNVisualizer:
         return sorted(cluster_ids)
 
     def _calculate_bipartite_layout(
-        self,
-        max_iterations: int = 20,
-        tf_layout_mode: str = "uniform"
-        ) -> Dict[str, Tuple[float, float]]:
+        self, max_iterations: int = 20, tf_layout_mode: str = "uniform"
+    ) -> dict[str, tuple[float, float]]:
         """
         Calculates node positions for a bipartite (TF-Target) network.
 
@@ -469,25 +462,24 @@ class GRNVisualizer:
         with the TF at the center.
 
         Parameters
-        -----------
+        ----------
             max_iterations (int): Max number of optimization iterations.
             tf_layout_mode (str): Layout mode for TFs ('optimized', 'uniform', 'sorted').
 
         Returns
-        --------
+        -------
             Dict[str, Tuple[float, float]]: Dictionary of node names to (x, y) coordinates.
         """
-
         # --- [NEW] Handle 1-TF "Star" Layout ---
         if len(self.tf_nodes) == 1:
             logg.info("Detected 1 TF, applying 'star' layout.")
-            pos: Dict[str, Tuple[float, float]] = {}
-            
+            pos: dict[str, tuple[float, float]] = {}
+
             # Place the single TF at the center
             # English comment: Place the single TF at (0, 0)
             tf_node = self.tf_nodes[0]
             pos[tf_node] = (0.0, 0.0)
-            
+
             # Arrange all target nodes in a circle around it
             # English comment: Arrange all target nodes in a circle
             num_targets = len(self.target_nodes)
@@ -495,16 +487,16 @@ class GRNVisualizer:
                 # Use r_ccre as the radius for the target circle, for consistency
                 # with the outer circle of the default bipartite layout.
                 # English comment: Use r_ccre as the radius for the target circle
-                radius = self.r_ccre 
-                
+                radius = self.r_ccre
+
                 # Sort targets for stable layout
                 # English comment: Sort targets to ensure a deterministic layout
                 sorted_targets = sorted(self.target_nodes)
-                
+
                 for i, target in enumerate(sorted_targets):
                     angle = 2 * np.pi * i / num_targets
                     pos[target] = (radius * np.cos(angle), radius * np.sin(angle))
-            
+
             return pos
         # --- [END NEW] ---
 
@@ -516,7 +508,6 @@ class GRNVisualizer:
 
         tf_angles = {tf: 2 * np.pi * i / len(tf_node_order) for i, tf in enumerate(tf_node_order)}
         target_angles = {tg: 2 * np.pi * i / len(self.target_nodes) for i, tg in enumerate(self.target_nodes)}
-
 
         # --- Step 2: Iterative Optimization ---
         for _ in range(max_iterations):
@@ -535,7 +526,7 @@ class GRNVisualizer:
             target_angles = new_target_angles
 
             # --- B: Optimize TF angles based on Target positions (optional) ---
-            if tf_layout_mode == 'optimized':
+            if tf_layout_mode == "optimized":
                 new_tf_angles = {}
                 for tf in self.tf_nodes:
                     connected_targets = self.tf_to_targets.get(tf, [])
@@ -550,7 +541,7 @@ class GRNVisualizer:
                 tf_angles = new_tf_angles
 
         # --- Step 3: Calculate final positions ---
-        pos: Dict[str, Tuple[float, float]] = {}
+        pos: dict[str, tuple[float, float]] = {}
         for tf, angle in tf_angles.items():
             pos[tf] = (self.r_tf * np.cos(angle), self.r_tf * np.sin(angle))
         for target, angle in target_angles.items():
@@ -559,143 +550,143 @@ class GRNVisualizer:
             pos[target] = (self.r_ccre * np.cos(angle), self.r_ccre * np.sin(angle))
         return pos
 
-
     def _calculate_layout(
-            self,
-            ordered_clusters: List[str],
-            max_iterations: int = 20,
-            tf_layout_mode: str = "uniform"
-        ) -> Dict[str, Tuple[float, float]]:
-            """
-            Executes the iterative optimization algorithm to calculate node positions for triplet networks.
+        self, ordered_clusters: list[str], max_iterations: int = 20, tf_layout_mode: str = "uniform"
+    ) -> dict[str, tuple[float, float]]:
+        """
+        Executes the iterative optimization algorithm to calculate node positions for triplet networks.
 
-            This method arranges nodes on concentric circles and iteratively refines their
-            angular positions to reduce edge crossings and improve clarity.
+        This method arranges nodes on concentric circles and iteratively refines their
+        angular positions to reduce edge crossings and improve clarity.
 
-            Parameters
-            -----------
-                ordered_clusters (List[str]): The ordered list of target gene clusters.
-                max_iterations (int): The maximum number of optimization iterations.
-                tf_layout_mode (str): The layout mode for TF nodes. Options are:
-                    - "optimized": Iteratively optimizes TF positions based on cCREs.
-                    - "uniform": Places TFs uniformly, only optimizes targets.
-                    - "sorted": Places TFs in alphabetical order, only optimizes targets.
-            Returns
-            --------
-                Dict[str, Tuple[float, float]]: A dictionary mapping node names to (x, y) coordinates.
-            """
+        Parameters
+        ----------
+            ordered_clusters (List[str]): The ordered list of target gene clusters.
+            max_iterations (int): The maximum number of optimization iterations.
+            tf_layout_mode (str): The layout mode for TF nodes. Options are:
+                - "optimized": Iteratively optimizes TF positions based on cCREs.
+                - "uniform": Places TFs uniformly, only optimizes targets.
+                - "sorted": Places TFs in alphabetical order, only optimizes targets.
 
-            # --- Step 1: Initialize Node Angles ---
+        Returns
+        -------
+            Dict[str, Tuple[float, float]]: A dictionary mapping node names to (x, y) coordinates.
+        """
+        # --- Step 1: Initialize Node Angles ---
 
-            # Initialize TF angles based on the selected layout mode
-            if tf_layout_mode == "sorted":
-                # Sort TFs alphabetically for a deterministic, stable layout
-                tf_node_order = sorted(self.tf_nodes)
-            else:
-                # For "optimized" and "uniform", the initial order is arbitrary but even
-                tf_node_order = self.tf_nodes
+        # Initialize TF angles based on the selected layout mode
+        if tf_layout_mode == "sorted":
+            # Sort TFs alphabetically for a deterministic, stable layout
+            tf_node_order = sorted(self.tf_nodes)
+        else:
+            # For "optimized" and "uniform", the initial order is arbitrary but even
+            tf_node_order = self.tf_nodes
 
-            tf_angles = {tf: 2 * np.pi * i / len(tf_node_order) for i, tf in enumerate(tf_node_order)}
+        tf_angles = {tf: 2 * np.pi * i / len(tf_node_order) for i, tf in enumerate(tf_node_order)}
 
-            # Initialize Target Gene angles based on their cluster order
-            target_angles: Dict[str, float] = {}
-            total_targets = len(self.target_nodes)
+        # Initialize Target Gene angles based on their cluster order
+        target_angles: dict[str, float] = {}
+        total_targets = len(self.target_nodes)
 
+        if total_targets > 0:
+            current_angle = 0.0
+            for cluster_id in ordered_clusters:
+                targets_in_cluster = self.target_clusters[cluster_id]
+                n = len(targets_in_cluster)
+                # Assign a proportional arc of the circle to each cluster
+                span = 2 * np.pi * n / total_targets
+                for i, target in enumerate(targets_in_cluster):
+                    # Space targets evenly within their cluster"s arc
+                    target_angles[target] = current_angle + span * (i + 0.5) / n
+                current_angle += span
+
+        # --- Step 2: Iterative Optimization Loop ---
+        for ii in range(max_iterations):
+            # --- PART A: Fix TFs, Optimize Targets ---
+            # This part always runs to position targets relative to TFs.
+
+            # Get current positions based on current angles
+            pos = self._get_positions(tf_angles, target_angles)
+            tf_pos = {tf: pos[tf] for tf in self.tf_nodes}
+
+            # Calculate a "torque" score for each target based on connected TFs
+            node_scores: dict[str, float] = {}
+            for ccre in self.ccre_nodes:
+                connected_tfs = self.ccre_to_tfs.get(ccre, [])
+                if connected_tfs:
+                    avg_pos = np.mean([tf_pos[p] for p in connected_tfs], axis=0)
+                    tangent_angle = np.arctan2(avg_pos[1], avg_pos[0]) + np.pi / 2
+                    tangent_vec = np.array([np.cos(tangent_angle), np.sin(tangent_angle)])
+
+                    # The tangential component acts as a rotational force
+                    t_comp = 0.0
+                    if len(connected_tfs) >= 2:
+                        for i, p1 in enumerate(connected_tfs):
+                            for p2 in connected_tfs[i + 1 :]:
+                                vec = np.array(tf_pos[p2]) - np.array(tf_pos[p1])
+                                t_comp += np.dot(vec, tangent_vec)
+
+                    for target in self.ccre_to_targets[ccre]:
+                        node_scores[target] = t_comp
+
+            # Re-calculate target angles based on their sorted torque scores
+            new_target_angles: dict[str, float] = {}
+            current_angle = 0.0
             if total_targets > 0:
-                current_angle = 0.0
                 for cluster_id in ordered_clusters:
-                    targets_in_cluster = self.target_clusters[cluster_id]
-                    n = len(targets_in_cluster)
-                    # Assign a proportional arc of the circle to each cluster
+                    scores = sorted(
+                        [(t, node_scores.get(t, 0.0)) for t in self.target_clusters[cluster_id]], key=lambda x: x[1]
+                    )
+                    n = len(scores)
                     span = 2 * np.pi * n / total_targets
-                    for i, target in enumerate(targets_in_cluster):
-                        # Space targets evenly within their cluster"s arc
-                        target_angles[target] = current_angle + span * (i + 0.5) / n
+                    for i, (target, _) in enumerate(scores):
+                        new_target_angles[target] = current_angle + span * (i + 0.5) / n
                     current_angle += span
+            target_angles = new_target_angles
 
-            # --- Step 2: Iterative Optimization Loop ---
-            for ii in range(max_iterations):
-                # --- PART A: Fix TFs, Optimize Targets ---
-                # This part always runs to position targets relative to TFs.
+            # --- PART B: Fix Targets, Optimize TFs (Conditional) ---
 
-                # Get current positions based on current angles
-                pos = self._get_positions(tf_angles, target_angles)
-                tf_pos = {tf: pos[tf] for tf in self.tf_nodes}
-
-                # Calculate a "torque" score for each target based on connected TFs
-                node_scores: Dict[str, float] = {}
-                for ccre in self.ccre_nodes:
-                    connected_tfs = self.ccre_to_tfs.get(ccre, [])
-                    if connected_tfs:
-                        avg_pos = np.mean([tf_pos[p] for p in connected_tfs], axis=0)
-                        tangent_angle = np.arctan2(avg_pos[1], avg_pos[0]) + np.pi / 2
-                        tangent_vec = np.array([np.cos(tangent_angle), np.sin(tangent_angle)])
-
-                        # The tangential component acts as a rotational force
-                        t_comp = 0.0
-                        if len(connected_tfs) >= 2:
-                            for i, p1 in enumerate(connected_tfs):
-                                for p2 in connected_tfs[i+1:]:
-                                    vec = np.array(tf_pos[p2]) - np.array(tf_pos[p1])
-                                    t_comp += np.dot(vec, tangent_vec)
-
-                        for target in self.ccre_to_targets[ccre]:
-                            node_scores[target] = t_comp
-
-                # Re-calculate target angles based on their sorted torque scores
-                new_target_angles: Dict[str, float] = {}
-                current_angle = 0.0
-                if total_targets > 0:
-                    for cluster_id in ordered_clusters:
-                        scores = sorted([(t, node_scores.get(t, 0.)) for t in self.target_clusters[cluster_id]], key=lambda x: x[1])
-                        n = len(scores)
-                        span = 2 * np.pi * n / total_targets
-                        for i, (target, _) in enumerate(scores):
-                            new_target_angles[target] = current_angle + span * (i + 0.5) / n
-                        current_angle += span
-                target_angles = new_target_angles
-
-                # --- PART B: Fix Targets, Optimize TFs (Conditional) ---
-
-                # If the mode is "uniform" or "sorted", the TF layout is fixed.
-                # We skip this optimization step.
-                if tf_layout_mode in ["uniform", "sorted"]:
-                    # Run at least one iteration to optimize targets based on fixed TF positions.
-                    if ii > 0:
-                        break
-                    continue
-
-                # This part only runs for `tf_layout_mode == "optimized"`
-                pos = self._get_positions(tf_angles, target_angles)
-                ccre_pos = {c: pos[c] for c in self.ccre_nodes}
-                new_tf_angles: Dict[str, float] = {}
-
-                for tf in self.tf_nodes:
-                    # Calculate the average angle of all connected cCREs
-                    angles = [np.arctan2(ccre_pos[c][1], ccre_pos[c][0]) for c in self.tf_to_ccres.get(tf, []) if c in ccre_pos]
-                    if angles:
-                        # Use vector averaging for angles to handle circularity correctly
-                        new_tf_angles[tf] = np.arctan2(np.mean(np.sin(angles)), np.mean(np.cos(angles)))
-                    else:
-                        # If a TF is not connected, keep its original angle
-                        new_tf_angles[tf] = tf_angles.get(tf, 0)
-
-                # Check for convergence
-                change = sum(abs(new_tf_angles.get(p, 0) - tf_angles.get(p, 0)) for p in self.tf_nodes)
-                tf_angles = new_tf_angles
-                if change < 0.01:
+            # If the mode is "uniform" or "sorted", the TF layout is fixed.
+            # We skip this optimization step.
+            if tf_layout_mode in ["uniform", "sorted"]:
+                # Run at least one iteration to optimize targets based on fixed TF positions.
+                if ii > 0:
                     break
+                continue
 
-            # --- Step 3: Return Final Positions ---
-            return self._get_positions(tf_angles, target_angles)
+            # This part only runs for `tf_layout_mode == "optimized"`
+            pos = self._get_positions(tf_angles, target_angles)
+            ccre_pos = {c: pos[c] for c in self.ccre_nodes}
+            new_tf_angles: dict[str, float] = {}
+
+            for tf in self.tf_nodes:
+                # Calculate the average angle of all connected cCREs
+                angles = [
+                    np.arctan2(ccre_pos[c][1], ccre_pos[c][0]) for c in self.tf_to_ccres.get(tf, []) if c in ccre_pos
+                ]
+                if angles:
+                    # Use vector averaging for angles to handle circularity correctly
+                    new_tf_angles[tf] = np.arctan2(np.mean(np.sin(angles)), np.mean(np.cos(angles)))
+                else:
+                    # If a TF is not connected, keep its original angle
+                    new_tf_angles[tf] = tf_angles.get(tf, 0)
+
+            # Check for convergence
+            change = sum(abs(new_tf_angles.get(p, 0) - tf_angles.get(p, 0)) for p in self.tf_nodes)
+            tf_angles = new_tf_angles
+            if change < 0.01:
+                break
+
+        # --- Step 3: Return Final Positions ---
+        return self._get_positions(tf_angles, target_angles)
 
     def _apply_jitter(
         self,
-        final_pos: Dict[str, Tuple[float, float]],
-        nodes_to_check: List[str],
+        final_pos: dict[str, tuple[float, float]],
+        nodes_to_check: list[str],
         radius: float,
-        jitter_strength: float = 1.5  # <-- New parameter with a default value
-    ) -> Dict[str, Tuple[float, float]]:
+        jitter_strength: float = 1.5,  # <-- New parameter with a default value
+    ) -> dict[str, tuple[float, float]]:
         """
         Applies a small positional jitter to any overlapping nodes from a given list.
 
@@ -706,11 +697,12 @@ class GRNVisualizer:
             jitter_strength (float): A multiplier to control the separation angle.
                                     Higher values create more space between nodes.
 
-        Returns:
+        Returns
+        -------
             Dict[str, Tuple[float, float]]: The updated position dictionary.
         """
         # Group nodes by their rounded coordinates
-        node_positions: Dict[Tuple[float, float], List[str]] = defaultdict(list)
+        node_positions: dict[tuple[float, float], list[str]] = defaultdict(list)
         for node in nodes_to_check:
             if node in final_pos:
                 pos_tuple = (round(final_pos[node][0], 4), round(final_pos[node][1], 4))
@@ -723,11 +715,7 @@ class GRNVisualizer:
                 # Use the new parameter to control the spread
                 spread_radians = np.radians(jitter_strength * len(node_list))
 
-                angles = np.linspace(
-                    base_angle - spread_radians / 2,
-                    base_angle + spread_radians / 2,
-                    len(node_list)
-                )
+                angles = np.linspace(base_angle - spread_radians / 2, base_angle + spread_radians / 2, len(node_list))
 
                 for i, node in enumerate(node_list):
                     final_pos[node] = (radius * np.cos(angles[i]), radius * np.sin(angles[i]))
@@ -735,10 +723,8 @@ class GRNVisualizer:
         return final_pos
 
     def _get_positions(
-        self,
-        tf_angles: Dict[str, float],
-        target_angles: Dict[str, float]
-    ) -> Dict[str, Tuple[float, float]]:
+        self, tf_angles: dict[str, float], target_angles: dict[str, float]
+    ) -> dict[str, tuple[float, float]]:
         """
         Calculates Cartesian coordinates for all nodes based on their angles.
 
@@ -746,10 +732,12 @@ class GRNVisualizer:
         ----------
             tf_angles (Dict[str, float]): A dictionary mapping TF names to their angles in radians.
             target_angles (Dict[str, float]): A dictionary mapping Target Gene names to their angles in radians.
+
         Returns
+        -------
             Dict[str, Tuple[float, float]]: A dictionary mapping node names to (x, y) coordinates.
         """
-        pos: Dict[str, Tuple[float, float]] = {}
+        pos: dict[str, tuple[float, float]] = {}
         for tf in self.tf_nodes:
             angle = tf_angles.get(tf, 0)
             pos[tf] = (self.r_tf * np.cos(angle), self.r_tf * np.sin(angle))
@@ -765,12 +753,12 @@ class GRNVisualizer:
     def _draw_external_labels(
         self,
         ax: plt.Axes,
-        final_pos: Dict[str, np.ndarray],
-        target_labels_to_plot: List[str],
-        target_font_dict: Dict,
-        target_bbox_dict: Dict,
+        final_pos: dict[str, np.ndarray],
+        target_labels_to_plot: list[str],
+        target_font_dict: dict,
+        target_bbox_dict: dict,
         offset_factor: float,
-        fixed_text_objects: List[plt.Text] # New: pass existing TF text objects as obstacles
+        fixed_text_objects: list[plt.Text],  # New: pass existing TF text objects as obstacles
     ) -> None:
         """
         Adds and adjusts external text labels for Target Genes with distinct styles and connectors.
@@ -795,15 +783,13 @@ class GRNVisualizer:
                 label_x = x_point * offset_factor
                 label_y = y_point * offset_factor
 
-                target_text = ax.text(label_x, label_y, label,
-                                      **target_font_dict, bbox=target_bbox_dict)
+                target_text = ax.text(label_x, label_y, label, **target_font_dict, bbox=target_bbox_dict)
                 target_texts.append(target_text)
 
         # Adjust only the target texts, considering fixed TF labels as obstacles
         if target_texts:
             print(f"Adjusting {len(target_texts)} external target labels to prevent overlap...")
-            adjust_text(target_texts, ax=ax,
-                        add_objects=fixed_text_objects)
+            adjust_text(target_texts, ax=ax, add_objects=fixed_text_objects)
 
     def _draw_smooth_hull_shadow(
         self,
@@ -813,7 +799,7 @@ class GRNVisualizer:
         alpha: float,
         expansion_factor: float,
         smoothness: float,
-        resolution: int
+        resolution: int,
     ) -> None:
         """
         Draws a smooth, blob-like shadow around a set of points using a spline-interpolated convex hull.
@@ -828,7 +814,8 @@ class GRNVisualizer:
             smoothness (float): Smoothing factor for the spline interpolation.
             resolution (int): Number of points to use in the smooth polygon.
         """
-        from scipy.interpolate import splprep, splev
+        from scipy.interpolate import splev, splprep
+
         try:
             # 1. Compute the convex hull of the points
             hull = ConvexHull(points)
@@ -840,7 +827,10 @@ class GRNVisualizer:
 
             # 3. Use spline interpolation to create a smooth curve
             # Close the loop by appending the first point to the end
-            x, y = np.append(expanded_points[:, 0], expanded_points[0, 0]), np.append(expanded_points[:, 1], expanded_points[1, 1])
+            x, y = (
+                np.append(expanded_points[:, 0], expanded_points[0, 0]),
+                np.append(expanded_points[:, 1], expanded_points[1, 1]),
+            )
 
             # Generate the B-spline representation
             tck, u = splprep([x, y], s=smoothness, per=True)
@@ -855,7 +845,7 @@ class GRNVisualizer:
                 facecolor=color,
                 edgecolor=None,
                 alpha=alpha,
-                zorder=0  # Ensure it"s in the background
+                zorder=0,  # Ensure it"s in the background
             )
             ax.add_patch(smooth_shadow)
 
@@ -864,15 +854,15 @@ class GRNVisualizer:
 
     def _create_continuous_mapping(
         self,
-        nodes_with_suffixes: List[str],
+        nodes_with_suffixes: list[str],
         node_type_suffix: str,
         modal: str,
-        layer: Optional[str] = None,
-        var_key: Optional[str] = None,
-        varm_key: Optional[Tuple[str, str]] = None,
-        map_range: Union[Tuple[float, float], str] = (0.5, 3.0),
-        transform: str = "mean"
-    ) -> Dict[str, Union[float, str]]:
+        layer: str | None = None,
+        var_key: str | None = None,
+        varm_key: tuple[str, str] | None = None,
+        map_range: tuple[float, float] | str = (0.5, 3.0),
+        transform: str = "mean",
+    ) -> dict[str, float | str]:
         """
         Creates a continuous mapping from numerical data to a visual property.
         """
@@ -889,10 +879,10 @@ class GRNVisualizer:
         # 2. Retrieve the data matrix using the provided helpers
         try:
             data_modal = _get_data_modal(self.gdata, modal=modal)
-            # data_modal_fil = data_modal[:, clean_names] if all(name in data_modal.var_names for name in clean_names) else None 
+            # data_modal_fil = data_modal[:, clean_names] if all(name in data_modal.var_names for name in clean_names) else None
 
             if layer and not varm_key and not var_key:
-            # Assuming _get_X returns a DataFrame of shape (cells, genes)
+                # Assuming _get_X returns a DataFrame of shape (cells, genes)
                 X = _get_X(data_modal, layer=layer, var_filter=clean_names, output_type="pd.DataFrame")
                 # 3. Aggregate the data (e.g., take the mean across all cells)
                 if transform == "mean":
@@ -902,11 +892,13 @@ class GRNVisualizer:
                     values = np.log1p(X[clean_names]).mean(axis=0)
                 else:
                     raise ValueError(f"Transform '{transform}' is not supported. Please use 'mean'.")
-                
+
                 if X.empty or not any(name in X.columns for name in clean_names):
-                    logg.warning(f"No data found for the specified nodes in modal='{modal}', layer='{layer}'. Cannot create mapping.")
+                    logg.warning(
+                        f"No data found for the specified nodes in modal='{modal}', layer='{layer}'. Cannot create mapping."
+                    )
                     return {}
-                
+
             elif varm_key and not layer and not var_key:
                 varm_0, varm_1 = varm_key
                 varm_df = _validate_varm_key(data_modal, varm_0, as_df=True)[0]
@@ -917,19 +909,21 @@ class GRNVisualizer:
 
             else:
                 raise ValueError("Please provide exactly one of 'layer', 'var_key', or 'varm_key'.")
-            
+
             if values is None or values.empty:
                 logg.warning(f"No data found for the specified nodes in modal='{modal}'. Cannot create mapping.")
                 return {}
 
         except Exception as e:
-            logg.warning(f"Could not retrieve data for continuous mapping (modal='{modal}', layer='{layer}'). Reason: {e}")
+            logg.warning(
+                f"Could not retrieve data for continuous mapping (modal='{modal}', layer='{layer}'). Reason: {e}"
+            )
             return {}
 
         # 4. Normalize the aggregated values to a [0, 1] range
         min_val, max_val = values.min(), values.max()
         if pd.isna(min_val) or pd.isna(max_val) or max_val == min_val:
-            normalized_values = pd.Series(0.5, index=values.index) # Avoid division by zero
+            normalized_values = pd.Series(0.5, index=values.index)  # Avoid division by zero
         else:
             normalized_values = (values - min_val) / (max_val - min_val)
 
@@ -939,7 +933,8 @@ class GRNVisualizer:
         cmap = None if is_numeric_map else plt.get_cmap(map_range)
 
         for clean_name, norm_val in normalized_values.items():
-            if pd.isna(norm_val): continue # Skip nodes with no data
+            if pd.isna(norm_val):
+                continue  # Skip nodes with no data
 
             suffixed_name = clean_to_suffixed[clean_name]
             if is_numeric_map:
@@ -957,16 +952,17 @@ class GRNVisualizer:
         node_type: str,
         visual_property: str,
         modal: str,
-        map_range: Union[Tuple[float, float], str],
-        layer: Optional[str] = None,
-        var_key: Optional[str] = None,
-        varm_key: Optional[Tuple[str, str]] = None,
+        map_range: tuple[float, float] | str,
+        layer: str | None = None,
+        var_key: str | None = None,
+        varm_key: tuple[str, str] | None = None,
         transform: str = "mean",
-        legend_title: Optional[str] = None # <-- NEW PARAMETER
-    ) -> "GRNVisualizer":
+        legend_title: str | None = None,  # <-- NEW PARAMETER
+    ) -> GRNVisualizer:
         """
         Configure a continuous mapping from numerical data to a visual property.
         ...
+
         Parameters
         ----------
         ...
@@ -987,25 +983,20 @@ class GRNVisualizer:
             "varm_key": varm_key,
             "map_range": map_range,
             "transform": transform,
-            "legend_title": legend_title, # <-- STORE THE TITLE
+            "legend_title": legend_title,  # <-- STORE THE TITLE
         }
         self._continuous_mappings.append(config)
         logg.info(f"Added continuous mapping for '{node_type}' node '{visual_property}'.")
         return self
 
-
-    def _draw_continuous_legends(
-        self,
-        fig: matplotlib.figure.Figure,
-        legend_configs: List[Dict]
-    ):
+    def _draw_continuous_legends(self, fig: matplotlib.figure.Figure, legend_configs: list[dict]):
         """
         Draws legends for all configured continuous mappings on the figure.
         This version uses pre-calculated values to ensure consistency with the plot.
         """
         # Start positioning legends from the bottom of the figure and move upwards
         legend_y_pos = 0.05
-        spacing = 0.08 # Vertical space for each legend
+        spacing = 0.08  # Vertical space for each legend
 
         for i, config in enumerate(legend_configs):
             # Calculate the bottom position for the current legend's axis
@@ -1015,15 +1006,15 @@ class GRNVisualizer:
                 # --- Draw a Size Legend using Pre-calculated Sizes ---
                 # cax = fig.add_axes([0.10, current_y_pos, 0.25, 0.1])
                 cax = fig.add_axes([0.05, current_y_pos, 0.25, 0.08])
-                cax.axis('off')
+                cax.axis("off")
                 cax.set_xlim(0, 1)
                 cax.set_ylim(0, 1)
 
-                title = config['label']
-                cax.text(0.0, 1.0, title, transform=cax.transAxes, fontsize=10, va='bottom', ha='left', weight='bold')
+                title = config["label"]
+                cax.text(0.0, 1.0, title, transform=cax.transAxes, fontsize=10, va="bottom", ha="left", weight="bold")
 
                 # Directly use the pre-calculated labels and sizes
-                legend_points = config['legend_points']
+                legend_points = config["legend_points"]
                 final_labels = sorted(legend_points.keys())
                 mapped_sizes = [legend_points[lbl] for lbl in final_labels]
                 mapped_sizes = [s * 5 for s in mapped_sizes]  # Scale sizes for visibility
@@ -1031,23 +1022,30 @@ class GRNVisualizer:
                 # Draw the circles
                 num_points = len(final_labels)
                 x_coords = np.linspace(0.1, 0.5, num_points) if num_points > 1 else [0.5]
-                cax.scatter(x_coords, [0.6]*num_points, s=mapped_sizes,
-                            facecolor='white', edgecolor='black', alpha=0.7, linewidths=1)
+                cax.scatter(
+                    x_coords,
+                    [0.6] * num_points,
+                    s=mapped_sizes,
+                    facecolor="white",
+                    edgecolor="black",
+                    alpha=0.7,
+                    linewidths=1,
+                )
 
                 # Add integer text labels
                 for j, label in enumerate(final_labels):
-                    cax.text(x_coords[j], 0.2, str(label), ha='center', va='center', fontsize=10)
+                    cax.text(x_coords[j], 0.2, str(label), ha="center", va="center", fontsize=10)
 
             elif config["type"] == "color":
                 # --- Draw a Colorbar Legend (logic is unchanged) ---
                 cax = fig.add_axes([0.05, current_y_pos, 0.15, 0.02])
 
-                title = config['label']
-                cax.text(0.5, 1.6, title, ha='center', va='bottom', transform=cax.transAxes, fontsize=10, weight='bold')
+                title = config["label"]
+                cax.text(0.5, 1.6, title, ha="center", va="bottom", transform=cax.transAxes, fontsize=10, weight="bold")
 
-                cmap = plt.get_cmap(config['map_range'])
-                norm = mpl.colors.Normalize(vmin=config['data_min'], vmax=config['data_max'])
-                cb = mpl.colorbar.ColorbarBase(cax, cmap=cmap, norm=norm, orientation='horizontal')
+                cmap = plt.get_cmap(config["map_range"])
+                norm = mpl.colors.Normalize(vmin=config["data_min"], vmax=config["data_max"])
+                cb = mpl.colorbar.ColorbarBase(cax, cmap=cmap, norm=norm, orientation="horizontal")
 
                 cb.ax.tick_params(labelsize=9)
                 # for label in cb.ax.get_xticklabels():
@@ -1057,12 +1055,12 @@ class GRNVisualizer:
     def _draw_cluster_wedges(
         self,
         ax: matplotlib.axes.Axes,
-        final_pos: Dict[str, np.ndarray],
-        ordered_clusters: List[str],
-        cluster_color_map: Dict[str, int],
-        target_colors: List[str],
-        show_cluster_labels: bool = True,   # <-- NEW PARAMETER
-        cluster_label_map: Dict[str, str] = None # <-- MODIFIED PARAMETER
+        final_pos: dict[str, np.ndarray],
+        ordered_clusters: list[str],
+        cluster_color_map: dict[str, int],
+        target_colors: list[str],
+        show_cluster_labels: bool = True,  # <-- NEW PARAMETER
+        cluster_label_map: dict[str, str] = None,  # <-- MODIFIED PARAMETER
     ) -> None:
         """
         Draws wedges and optional labels in the background of the network plot
@@ -1083,11 +1081,11 @@ class GRNVisualizer:
         for cluster_id in ordered_clusters:
             # Get all target genes in the current cluster
             targets_in_cluster = self.target_clusters.get(cluster_id, [])
-            
+
             # Get the corresponding color for this cluster
             color_idx = cluster_color_map[cluster_id]
             wedge_color = target_colors[color_idx]
-            
+
             # Calculate the angle for each target gene (in degrees, 0-360)
             angles = []
             for target_node in targets_in_cluster:
@@ -1097,31 +1095,32 @@ class GRNVisualizer:
                     if angle < 0:
                         angle += 360
                     angles.append(angle)
-            
+
             if not angles:
                 continue
 
             # --- Determine the start and end angles for the wedge ---
             angles.sort()
-            
+
             # Handle the case where cluster members wrap around the 0/360 degree line
             if len(angles) > 1 and angles[-1] - angles[0] > 180:
                 angles = [(a + 360 if a < 180 else a) for a in angles]
                 angles.sort()
-            
+
             margin = 5  # degrees
             start_angle = angles[0] - margin
             end_angle = angles[-1] + margin
-            
+
             # --- Create and add the wedge patch to the plot ---
             wedge = Wedge(
-                (0, 0), self.r_target * 1.05,
+                (0, 0),
+                self.r_target * 1.05,
                 start_angle,
                 end_angle,
                 width=self.r_target * 1.05 - self.r_ccre * 1.05,
                 alpha=0.1,
                 color=wedge_color,
-                zorder=0
+                zorder=0,
             )
 
             ax.add_patch(wedge)
@@ -1131,57 +1130,55 @@ class GRNVisualizer:
                 # Calculate the midpoint angle for the label position
                 mid_angle_deg = (start_angle + end_angle) / 2
                 mid_angle_rad = np.radians(mid_angle_deg)
-                
+
                 # Place the label in the middle of the wedge's annular region
                 # label_radius = (self.r_ccre * 1.05 + self.r_target * 1.05) / 2
                 label_radius = self.r_target * 1.2  # Slightly outside the target circle
                 label_x = label_radius * np.cos(mid_angle_rad)
                 label_y = label_radius * np.sin(mid_angle_rad)
-                
+
                 # Smartly rotate the text to keep it upright
                 # Flips the text on the left side of the plot to avoid it being upside down
                 rotation = mid_angle_deg - 90 if 90 < (mid_angle_deg % 360) < 270 else mid_angle_deg + 90
 
                 label_text = cluster_label_map.get(cluster_id, cluster_id)
 
-   
                 ax.text(
-                    label_x, label_y, label_text, # <-- Use the new label_text
-                    fontsize=8, weight='bold', # Slightly smaller font for "Term X"
-                    ha='center', va='center',
+                    label_x,
+                    label_y,
+                    label_text,  # <-- Use the new label_text
+                    fontsize=8,
+                    weight="bold",  # Slightly smaller font for "Term X"
+                    ha="center",
+                    va="center",
                     rotation=rotation,
-                    bbox=dict(
-                        boxstyle='round,pad=0.3',
-                        facecolor='white',
-                        edgecolor=wedge_color,
-                        alpha=0.8
-                    )
+                    bbox=dict(boxstyle="round,pad=0.3", facecolor="white", edgecolor=wedge_color, alpha=0.8),
                 )
 
     def plot(
         self,
-        figsize: Tuple[int, int] = (10, 10),
+        figsize: tuple[int, int] = (10, 10),
         dpi: int = 300,
         title: str = "TF-cCRE-Target Network",
         title_fontsize: int = 16,
         tf_layout_mode: str = "uniform",
-        node_color_map: Optional[Dict[str, any]] = None,
-        node_size_map: Optional[Dict[str, float]] = None,
-        node_shape_map: Optional[Dict[str, str]] = None,
+        node_color_map: dict[str, any] | None = None,
+        node_size_map: dict[str, float] | None = None,
+        node_shape_map: dict[str, str] | None = None,
         # --- NEW PARAMETERS ---
         interactive: bool = False,
         jitter_strength: float = 5.0,
         # --- LABELING PARAMETERS ---
         label_mode: str = "external",
-        tf_label_font_dict: Optional[Dict] = None,
-        tf_label_bbox_dict: Optional[Dict] = None,
-        tf_label_patheffects: Optional[List] = None,
-        target_label_font_dict: Optional[Dict] = None,
-        target_label_bbox_dict: Optional[Dict] = None,
+        tf_label_font_dict: dict | None = None,
+        tf_label_bbox_dict: dict | None = None,
+        tf_label_patheffects: list | None = None,
+        target_label_font_dict: dict | None = None,
+        target_label_bbox_dict: dict | None = None,
         label_offset_factor: float = 1.0,
-        label_only_highlighted_targets: bool = False, # <-- ADD THIS NEW PARAMETER
+        label_only_highlighted_targets: bool = False,  # <-- ADD THIS NEW PARAMETER
         # --- HIGHLIGHTING PARAMETERS ---
-        highlight: Optional[Dict[str, List[str]]] = None,
+        highlight: dict[str, list[str]] | None = None,
         highlight_edge_color: str = "#d62728",
         highlight_edge_width: float = 1.0,
         highlight_shadow: bool = False,
@@ -1193,16 +1190,16 @@ class GRNVisualizer:
         # --- CLUSTER PARAMETERS ---
         draw_cluster_wedges: bool = False,
         draw_cluster_labels: bool = True,
-        legend_fontsize: int = 8, # <-- Add new parameter for legend font size
+        legend_fontsize: int = 8,  # <-- Add new parameter for legend font size
         # --- FIGURE PARAMETERS ---
-        context: Optional[str] = None,
-        default_context: Optional[dict] = None,
-        theme: Optional[str] = "ticks",
-        font_scale: Optional[float] = 1,
-        save: Optional[str] = None,
-        show: Optional[bool] = None,
-        **kwargs
-    ) -> Union[Tuple[matplotlib.figure.Figure, matplotlib.axes.Axes], None]:
+        context: str | None = None,
+        default_context: dict | None = None,
+        theme: str | None = "ticks",
+        font_scale: float | None = 1,
+        save: str | None = None,
+        show: bool | None = None,
+        **kwargs,
+    ) -> tuple[matplotlib.figure.Figure, matplotlib.axes.Axes] | None:
         """
         Executes the full layout pipeline and draws the network plot using netgraph.
 
@@ -1245,12 +1242,16 @@ class GRNVisualizer:
 
         # --- Step 2: Layout Calculation ---
         logg.info("Calculating Network Layout...")
-        if self.network_type == 'triplet':
+        if self.network_type == "triplet":
             ordered_clusters = self._get_optimized_cluster_order()
             base_pos = self._calculate_layout(ordered_clusters, tf_layout_mode=tf_layout_mode)
-            pos_after_ccre_jitter = self._apply_jitter(base_pos, self.ccre_nodes, self.r_ccre, jitter_strength=jitter_strength)
-            final_pos = self._apply_jitter(pos_after_ccre_jitter, self.target_nodes, self.r_target, jitter_strength=jitter_strength)
-        elif self.network_type == 'bipartite':
+            pos_after_ccre_jitter = self._apply_jitter(
+                base_pos, self.ccre_nodes, self.r_ccre, jitter_strength=jitter_strength
+            )
+            final_pos = self._apply_jitter(
+                pos_after_ccre_jitter, self.target_nodes, self.r_target, jitter_strength=jitter_strength
+            )
+        elif self.network_type == "bipartite":
             base_pos = self._calculate_bipartite_layout(tf_layout_mode=tf_layout_mode)
             final_pos = self._apply_jitter(base_pos, self.target_nodes, self.r_ccre, jitter_strength=jitter_strength)
         else:
@@ -1272,7 +1273,7 @@ class GRNVisualizer:
             highlighted_nodes.update(h_tfs)
             highlighted_nodes.update(h_targets)
 
-            if self.network_type == 'triplet':
+            if self.network_type == "triplet":
                 h_ccres_direct = set(highlight.get("cCRE", []))
                 bridge_ccres = set() if not h_ccres_direct else h_ccres_direct
                 if not h_ccres_direct:
@@ -1285,7 +1286,7 @@ class GRNVisualizer:
                     if (u in h_tfs and v in bridge_ccres) or (u in bridge_ccres and v in h_targets):
                         edge_color_map[(u, v)] = highlight_edge_color
                         edge_width_map[(u, v)] = highlight_edge_width
-            else: # Bipartite
+            else:  # Bipartite
                 for u, v in self.G.edges():
                     if u in h_tfs and v in h_targets:
                         edge_color_map[(u, v)] = highlight_edge_color
@@ -1297,20 +1298,25 @@ class GRNVisualizer:
                 edge_width_map[(u, v)] = default_edge_width
 
         effective_color_map = {
-            "TF": "#E96C00", "cCRE": "#758CAF",
+            "TF": "#E96C00",
+            "cCRE": "#758CAF",
             # "Target": ["#AB5C5D", "#D87A7B", "#E4A19A", "#F2C3C3", "#F9E2E2"]
-            "Target": ["#a50f15", "#de2d26", "#fb6a4a", "#fcae91", "#fee5d9", "#EA9169"]
+            "Target": ["#a50f15", "#de2d26", "#fb6a4a", "#fcae91", "#fee5d9", "#EA9169"],
         }
-        if node_color_map: effective_color_map.update(node_color_map)
+        if node_color_map:
+            effective_color_map.update(node_color_map)
 
         effective_size_map = {"TF": 10, "cCRE": 2.5, "Target": 6}
-        if node_size_map: effective_size_map.update(node_size_map)
+        if node_size_map:
+            effective_size_map.update(node_size_map)
 
         effective_shape_map = {"TF": "8", "cCRE": "d", "Target": "o"}
-        if node_shape_map: effective_shape_map.update(node_shape_map)
+        if node_shape_map:
+            effective_shape_map.update(node_shape_map)
 
         target_colors = effective_color_map["Target"]
-        if not isinstance(target_colors, list): target_colors = [target_colors]
+        if not isinstance(target_colors, list):
+            target_colors = [target_colors]
         ordered_clusters = self._get_optimized_cluster_order()
         cluster_color_map = {cid: i % len(target_colors) for i, cid in enumerate(ordered_clusters)}
 
@@ -1332,7 +1338,7 @@ class GRNVisualizer:
                     if node in targets:
                         node_color[node] = target_colors[cluster_color_map.get(cid, 0)]
                         break
-        
+
         legend_configs = []
         if hasattr(self, "_continuous_mappings"):
             logg.info("Applying custom continuous mappings...")
@@ -1355,7 +1361,7 @@ class GRNVisualizer:
                         transform=config["transform"],
                     )
 
-                    if mapping_dict: # Only proceed if a mapping was successfully created
+                    if mapping_dict:  # Only proceed if a mapping was successfully created
                         legend_label = config["legend_title"] or f"{config['modal']} ({config['node_type']})"
 
                         if config["visual_property"] == "size":
@@ -1378,56 +1384,64 @@ class GRNVisualizer:
                                         normalized_val = (val - data_min) / (data_max - data_min)
                                     else:
                                         normalized_val = 0.5
-                                    min_size, max_size = config['map_range']
+                                    min_size, max_size = config["map_range"]
                                     calculated_size = min_size + normalized_val * (max_size - min_size)
                                     legend_points_for_drawing[label] = calculated_size
 
-                            legend_configs.append({
-                                "type": "size",
-                                "label": legend_label,
-                                "legend_points": legend_points_for_drawing,
-                            })
+                            legend_configs.append(
+                                {
+                                    "type": "size",
+                                    "label": legend_label,
+                                    "legend_points": legend_points_for_drawing,
+                                }
+                            )
 
                         elif config["visual_property"] == "color":
                             node_color.update(mapping_dict)
-                            legend_configs.append({
-                                "type": "color",
-                                "label": legend_label,
-                                "data_min": data_min,
-                                "data_max": data_max,
-                                "map_range": config["map_range"],
-                            })
+                            legend_configs.append(
+                                {
+                                    "type": "color",
+                                    "label": legend_label,
+                                    "data_min": data_min,
+                                    "data_max": data_max,
+                                    "map_range": config["map_range"],
+                                }
+                            )
 
-        netgraph_labels = {
-            node: node.replace("_TF", "").replace("_TG", "")
-            for node in self.tf_nodes + self.target_nodes
-        } if label_mode == "internal" else False
-        
+        netgraph_labels = (
+            {node: node.replace("_TF", "").replace("_TG", "") for node in self.tf_nodes + self.target_nodes}
+            if label_mode == "internal"
+            else False
+        )
+
         rc_params = _setup_rc_params(context, default_context, font_scale, theme)
 
         netgraph_style = dict(
-            node_layout=final_pos_np, node_color=node_color,
-            node_size=node_size, node_shape=node_shape, node_labels=netgraph_labels,
+            node_layout=final_pos_np,
+            node_color=node_color,
+            node_size=node_size,
+            node_shape=node_shape,
+            node_labels=netgraph_labels,
             node_edge_size=kwargs.pop("node_edge_size", 1.0),
             node_label_fontdict=kwargs.pop("node_label_fontdict", dict(size=9)),
             node_label_offset=kwargs.pop("node_label_offset", 0.1),
-            edge_layout=kwargs.pop("edge_layout", "curved"), # Use 'curved' as a safer default
+            edge_layout=kwargs.pop("edge_layout", "curved"),  # Use 'curved' as a safer default
             edge_color=edge_color_map,
             edge_width=edge_width_map,
             arrows=kwargs.pop("arrows", True),
         )
         netgraph_style.update(kwargs)
-        
+
         # --- Step 4: Render the Plot (Interactive vs. Static) ---
         with mpl.rc_context(rc_params):
-
             if interactive:
-                #--- INTERACTIVE PATH ---
+                # --- INTERACTIVE PATH ---
                 try:
                     fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
                     from netgraph import InteractiveGraph
+
                     logg.info("Creating an interactive plot. This is best viewed in a Jupyter environment.")
-                    
+
                     ax.set_title(title, fontsize=title_fontsize, pad=20)
                     ax.set_aspect("equal")
                     ax.axis("off")
@@ -1441,7 +1455,9 @@ class GRNVisualizer:
                     # Check the matplotlib.backend to provide a more informative message
                     backend = mpl.get_backend()
                     if backend in ["agg", "pdf", "ps", "svg", "inline"]:
-                        logg.error(f"Interactive plotting is not supported with the current matplotlib backend '{backend}'. \n Please switch to an interactive backend https://matplotlib.org/stable/users/explain/backends.html ")
+                        logg.error(
+                            f"Interactive plotting is not supported with the current matplotlib backend '{backend}'. \n Please switch to an interactive backend https://matplotlib.org/stable/users/explain/backends.html "
+                        )
                         return
 
                     logg.warning("InteractiveGraph could not be imported. Falling back to static plot.")
@@ -1455,39 +1471,78 @@ class GRNVisualizer:
                 netgraph.Graph(self.G, **netgraph_style)
 
                 if highlight_shadow and len(highlighted_nodes) >= 3:
-                    points_to_enclose = np.array([final_pos_np[node] for node in highlighted_nodes if node in final_pos_np])
+                    points_to_enclose = np.array(
+                        [final_pos_np[node] for node in highlighted_nodes if node in final_pos_np]
+                    )
                     if len(points_to_enclose) >= 3:
-                        self._draw_smooth_hull_shadow(ax=ax, points=points_to_enclose, color=highlight_shadow_color, alpha=highlight_shadow_alpha, expansion_factor=highlight_shadow_expansion, smoothness=highlight_shadow_smoothness, resolution=highlight_shadow_resolution)
-                
+                        self._draw_smooth_hull_shadow(
+                            ax=ax,
+                            points=points_to_enclose,
+                            color=highlight_shadow_color,
+                            alpha=highlight_shadow_alpha,
+                            expansion_factor=highlight_shadow_expansion,
+                            smoothness=highlight_shadow_smoothness,
+                            resolution=highlight_shadow_resolution,
+                        )
+
                 if label_mode == "external":
                     fixed_tf_texts = []
                     tf_label_fontsize = figsize[0] * 1.6
-                    if tf_label_font_dict is None: tf_label_font_dict = {"size": tf_label_fontsize, "fontweight": "bold", "color": "black", "fontstyle": "normal"}
-                    if tf_label_bbox_dict is None: tf_label_bbox_dict = dict(boxstyle="square,pad=0", fc="none", ec="none")
+                    if tf_label_font_dict is None:
+                        tf_label_font_dict = {
+                            "size": tf_label_fontsize,
+                            "fontweight": "bold",
+                            "color": "black",
+                            "fontstyle": "normal",
+                        }
+                    if tf_label_bbox_dict is None:
+                        tf_label_bbox_dict = dict(boxstyle="square,pad=0", fc="none", ec="none")
                     if tf_label_patheffects is None:
                         import matplotlib.patheffects as path_effects
+
                         tf_label_patheffects = [path_effects.withStroke(linewidth=3, foreground="white")]
-                    
+
                     tf_labels_to_plot = [n.replace("_TF", "") for n in self.tf_nodes]
                     for label_name in tf_labels_to_plot:
                         original_tf_name = label_name + "_TF"
                         if original_tf_name in final_pos:
                             x, y = final_pos[original_tf_name]
-                            tf_text_obj = ax.text(x, y, label_name, ha="center", va="center", **tf_label_font_dict, bbox=tf_label_bbox_dict, path_effects=tf_label_patheffects)
+                            tf_text_obj = ax.text(
+                                x,
+                                y,
+                                label_name,
+                                ha="center",
+                                va="center",
+                                **tf_label_font_dict,
+                                bbox=tf_label_bbox_dict,
+                                path_effects=tf_label_patheffects,
+                            )
                             fixed_tf_texts.append(tf_text_obj)
                     # target_label_fontsize = figsize[0] * 0.8
-                    if target_label_font_dict is None: target_label_font_dict = {"size": 8, "fontstyle": "italic", "color": "black", "fontweight": "normal"}
-                    if target_label_bbox_dict is None: target_label_bbox_dict = dict(boxstyle="round,pad=0.2", fc="white", ec="gray", lw=0.5, alpha=0.8)
-                    
-                    clean_final_pos = {node.replace("_TF", "").replace("_TG", ""): pos for node, pos in final_pos.items()}
-                    
+                    if target_label_font_dict is None:
+                        target_label_font_dict = {
+                            "size": 8,
+                            "fontstyle": "italic",
+                            "color": "black",
+                            "fontweight": "normal",
+                        }
+                    if target_label_bbox_dict is None:
+                        target_label_bbox_dict = dict(
+                            boxstyle="round,pad=0.2", fc="white", ec="gray", lw=0.5, alpha=0.8
+                        )
+
+                    clean_final_pos = {
+                        node.replace("_TF", "").replace("_TG", ""): pos for node, pos in final_pos.items()
+                    }
+
                     # --- [NEW LOGIC] ---
                     # English comment: Check if we should only label highlighted targets
-                    if label_only_highlighted_targets and 'highlighted_nodes' in locals():
+                    if label_only_highlighted_targets and "highlighted_nodes" in locals():
                         # English comment: Filter the target list to include only those in the highlighted set
                         target_labels_to_plot = [
-                            n.replace("_TG", "") for n in self.target_nodes 
-                            if (n in highlighted_nodes) # 'highlighted_nodes' is a set of suffixed names
+                            n.replace("_TG", "")
+                            for n in self.target_nodes
+                            if (n in highlighted_nodes)  # 'highlighted_nodes' is a set of suffixed names
                         ]
                         logg.info(f"Labeling only {len(target_labels_to_plot)} highlighted target genes.")
                     else:
@@ -1495,21 +1550,29 @@ class GRNVisualizer:
                         target_labels_to_plot = [n.replace("_TG", "") for n in self.target_nodes]
                     # --- [END NEW LOGIC] ---
 
-                    self._draw_external_labels(ax=ax, final_pos=clean_final_pos, target_labels_to_plot=target_labels_to_plot, target_font_dict=target_label_font_dict, target_bbox_dict=target_label_bbox_dict, offset_factor=label_offset_factor, fixed_text_objects=fixed_tf_texts)
+                    self._draw_external_labels(
+                        ax=ax,
+                        final_pos=clean_final_pos,
+                        target_labels_to_plot=target_labels_to_plot,
+                        target_font_dict=target_label_font_dict,
+                        target_bbox_dict=target_label_bbox_dict,
+                        offset_factor=label_offset_factor,
+                        fixed_text_objects=fixed_tf_texts,
+                    )
 
                 # English comment: Determine which concentric guide circles to draw
                 radii_to_draw = []
-                if self.network_type == 'triplet':
+                if self.network_type == "triplet":
                     # English comment: For triplet, draw all three circles
                     radii_to_draw = [self.r_tf, self.r_ccre, self.r_target]
-                elif self.network_type == 'bipartite':
+                elif self.network_type == "bipartite":
                     if len(self.tf_nodes) == 1:
                         # English comment: For star layout (1 TF), only draw the outer target circle
-                        radii_to_draw = [self.r_ccre] 
+                        radii_to_draw = [self.r_ccre]
                     else:
                         # English comment: For default bipartite, draw inner TF and outer Target circles
                         radii_to_draw = [self.r_tf, self.r_ccre]
-                
+
                 # English comment: Add the selected circle patches to the axes
                 for r in radii_to_draw:
                     ax.add_patch(Circle((0, 0), r, fill=False, linestyle="--", color="gray", alpha=0.5))
@@ -1517,14 +1580,15 @@ class GRNVisualizer:
                 if legend_configs:
                     self._draw_continuous_legends(fig, legend_configs)
 
-                if draw_cluster_wedges and self.network_type == 'triplet':
-                    from matplotlib.patches import Patch # Import Patch for custom legends
+                if draw_cluster_wedges and self.network_type == "triplet":
+                    from matplotlib.patches import Patch  # Import Patch for custom legends
 
                     ordered_clusters = self._get_optimized_cluster_order()
                     target_colors = effective_color_map["Target"]
-                    if not isinstance(target_colors, list): target_colors = [target_colors]
+                    if not isinstance(target_colors, list):
+                        target_colors = [target_colors]
                     cluster_color_map = {cid: i % len(target_colors) for i, cid in enumerate(ordered_clusters)}
-                    
+
                     cluster_label_map = {cluster_id: f"Term {i+1}" for i, cluster_id in enumerate(ordered_clusters)}
                     legend_proxies = []
                     for cluster_id in ordered_clusters:
@@ -1532,13 +1596,16 @@ class GRNVisualizer:
                         color = target_colors[cluster_color_map[cluster_id]]
                         legend_proxies.append(Patch(color=color, alpha=0.6, label=f"{term_label}: {cluster_id}"))
 
-
                     print("Drawing cluster background wedges...")
                     with mpl.rc_context(rc_params):
                         self._draw_cluster_wedges(
-                            ax, final_pos, ordered_clusters, cluster_color_map, target_colors,
+                            ax,
+                            final_pos,
+                            ordered_clusters,
+                            cluster_color_map,
+                            target_colors,
                             show_cluster_labels=draw_cluster_labels,
-                            cluster_label_map=cluster_label_map # <-- Pass the new map here
+                            cluster_label_map=cluster_label_map,  # <-- Pass the new map here
                         )
 
                     if legend_proxies:
@@ -1567,32 +1634,24 @@ class GRNVisualizer:
                             else:
                                 rest = parts[0].replace("_", " ").title()
                                 proxy.set_label(rest)
-        
 
                         fig.legend(
                             handles=legend_proxies,
-                            loc='lower right',
+                            loc="lower right",
                             fontsize=legend_fontsize,
-                            title='Enrichment Terms',
+                            title="Enrichment Terms",
                         )
                         fig.tight_layout(rect=[0, 0.1, 1, 1.3])
 
-
-                
                 ax.set_title(title, fontsize=title_fontsize, fontweight="normal", fontstyle="normal", pad=20)
                 ax.set_aspect("equal")
                 ax.axis("off")
-                
 
                 savefig_or_show("network", save=save, show=show)
                 if show is False:
                     return fig, ax
 
-    def _generate_cytoscape_style_xml(
-        self,
-        style_name: str,
-        defaults: Dict
-    ) -> str:
+    def _generate_cytoscape_style_xml(self, style_name: str, defaults: dict) -> str:
         """
         Generates the XML content for a Cytoscape style file.
 
@@ -1617,38 +1676,45 @@ class GRNVisualizer:
         # Format: (data_column_name, cytoscape_visual_property_name)
         mappings_to_create = [
             # Node mappings
-            ('color', 'NODE_FILL_COLOR'),
-            ('size', 'NODE_SIZE'),
-            ('label', 'NODE_LABEL'),
+            ("color", "NODE_FILL_COLOR"),
+            ("size", "NODE_SIZE"),
+            ("label", "NODE_LABEL"),
             # Edge mappings
-            ('color', 'EDGE_STROKE_UNSELECTED_PAINT'),
-            ('width', 'EDGE_WIDTH'),
+            ("color", "EDGE_STROKE_UNSELECTED_PAINT"),
+            ("width", "EDGE_WIDTH"),
         ]
 
         # Create the XML root element
-        root = ET.Element('vizmap')
-        style_element = ET.SubElement(root, 'visualStyle', name=style_name)
+        root = ET.Element("vizmap")
+        style_element = ET.SubElement(root, "visualStyle", name=style_name)
 
         # 1. Set default visual properties
-        node_defaults = ET.SubElement(style_element, 'node')
-        ET.SubElement(node_defaults, 'visualProperty', name='NODE_FILL_COLOR', default=defaults.get("node_color", "#888888"))
-        ET.SubElement(node_defaults, 'visualProperty', name='NODE_SIZE', default=str(defaults.get("node_size", 35.0)))
-        ET.SubElement(node_defaults, 'visualProperty', name='NODE_BORDER_WIDTH', default="0.0")
-        ET.SubElement(node_defaults, 'visualProperty', name='NODE_TRANSPARENCY', default="255")
+        node_defaults = ET.SubElement(style_element, "node")
+        ET.SubElement(
+            node_defaults, "visualProperty", name="NODE_FILL_COLOR", default=defaults.get("node_color", "#888888")
+        )
+        ET.SubElement(node_defaults, "visualProperty", name="NODE_SIZE", default=str(defaults.get("node_size", 35.0)))
+        ET.SubElement(node_defaults, "visualProperty", name="NODE_BORDER_WIDTH", default="0.0")
+        ET.SubElement(node_defaults, "visualProperty", name="NODE_TRANSPARENCY", default="255")
 
-        edge_defaults = ET.SubElement(style_element, 'edge')
-        ET.SubElement(edge_defaults, 'visualProperty', name='EDGE_STROKE_UNSELECTED_PAINT', default=defaults.get("edge_color", "#CCCCCC"))
-        ET.SubElement(edge_defaults, 'visualProperty', name='EDGE_WIDTH', default=str(defaults.get("edge_width", 2.0)))
-        ET.SubElement(edge_defaults, 'visualProperty', name='EDGE_TRANSPARENCY', default="255")
+        edge_defaults = ET.SubElement(style_element, "edge")
+        ET.SubElement(
+            edge_defaults,
+            "visualProperty",
+            name="EDGE_STROKE_UNSELECTED_PAINT",
+            default=defaults.get("edge_color", "#CCCCCC"),
+        )
+        ET.SubElement(edge_defaults, "visualProperty", name="EDGE_WIDTH", default=str(defaults.get("edge_width", 2.0)))
+        ET.SubElement(edge_defaults, "visualProperty", name="EDGE_TRANSPARENCY", default="255")
 
         # 2. Create all passthrough mappings
-        mappings_element = ET.SubElement(style_element, 'mappings')
+        mappings_element = ET.SubElement(style_element, "mappings")
         for from_col, to_vp in mappings_to_create:
-            mapping = ET.Element('mapping', attrib={'from': from_col, 'to': to_vp, 'type': 'passthrough'})
+            mapping = ET.Element("mapping", attrib={"from": from_col, "to": to_vp, "type": "passthrough"})
             mappings_element.append(mapping)
 
         # Format the XML for readability
-        xml_str = ET.tostring(root, 'utf-8')
+        xml_str = ET.tostring(root, "utf-8")
         dom = minidom.parseString(xml_str)
 
         return dom.toprettyxml(indent="  ")
@@ -1658,13 +1724,13 @@ class GRNVisualizer:
         path: str,
         format: str = "graphml",
         export_style: bool = False,
-        style_path: Optional[str] = None,
+        style_path: str | None = None,
         style_name: str = "scMagnify_GRN_Style",
         tf_layout_mode: str = "uniform",
-        node_color_map: Optional[Dict[str, any]] = None,
-        node_size_map: Optional[Dict[str, float]] = None,
-        node_shape_map: Optional[Dict[str, str]] = None,
-        highlight: Optional[Dict[str, List[str]]] = None,
+        node_color_map: dict[str, any] | None = None,
+        node_size_map: dict[str, float] | None = None,
+        node_shape_map: dict[str, str] | None = None,
+        highlight: dict[str, list[str]] | None = None,
         highlight_edge_color: str = "#d62728",
         highlight_edge_width: float = 1.0,
         default_edge_color: str = "lightgrey",
@@ -1698,25 +1764,31 @@ class GRNVisualizer:
 
         # --- 1. Calculate Layout (mirrors the logic in plot()) ---
         logg.info("Calculating node layout for export...")
-        if self.network_type == 'triplet':
+        if self.network_type == "triplet":
             ordered_clusters = self._get_optimized_cluster_order()
             base_pos = self._calculate_layout(ordered_clusters, tf_layout_mode=tf_layout_mode)
             pos_after_ccre_jitter = self._apply_jitter(base_pos, self.ccre_nodes, self.r_ccre)
             final_pos = self._apply_jitter(pos_after_ccre_jitter, self.target_nodes, self.r_target)
-        else: # Bipartite
-             final_pos = self._calculate_bipartite_layout(tf_layout_mode=tf_layout_mode)
-
+        else:  # Bipartite
+            final_pos = self._calculate_bipartite_layout(tf_layout_mode=tf_layout_mode)
 
         # --- 2. Define and Calculate Visual Attributes ---
         logg.info("Calculating visual attributes for export...")
 
         # Define base styles
-        effective_color_map = {"TF": "#2878b8", "cCRE": "#B8B8B8", "Target": ["#4f8f5a", "#9acd32", "#6d7c5f", "#8fbc8f", "#3cb371"]}
-        if node_color_map: effective_color_map.update(node_color_map)
+        effective_color_map = {
+            "TF": "#2878b8",
+            "cCRE": "#B8B8B8",
+            "Target": ["#4f8f5a", "#9acd32", "#6d7c5f", "#8fbc8f", "#3cb371"],
+        }
+        if node_color_map:
+            effective_color_map.update(node_color_map)
         effective_size_map = {"TF": 10, "cCRE": 2.5, "Target": 6}
-        if node_size_map: effective_size_map.update(node_size_map)
+        if node_size_map:
+            effective_size_map.update(node_size_map)
         effective_shape_map = {"TF": "o", "cCRE": "d", "Target": "o"}
-        if node_shape_map: effective_shape_map.update(node_shape_map)
+        if node_shape_map:
+            effective_shape_map.update(node_shape_map)
 
         # Prepare dictionaries to hold attributes for each node/edge
         node_attrs = defaultdict(dict)
@@ -1724,44 +1796,45 @@ class GRNVisualizer:
 
         # Assign node type, label, size, and shape
         target_colors = effective_color_map["Target"]
-        if not isinstance(target_colors, list): target_colors = [target_colors]
+        if not isinstance(target_colors, list):
+            target_colors = [target_colors]
         ordered_clusters = self._get_optimized_cluster_order()
         cluster_color_map = {cid: i % len(target_colors) for i, cid in enumerate(ordered_clusters)}
 
         for node in self.G.nodes():
             clean_label = node.replace("_TF", "").replace("_TG", "")
-            node_attrs[node]['label'] = clean_label
+            node_attrs[node]["label"] = clean_label
             if node in self.tf_nodes_set:
-                node_attrs[node]['type'] = 'TF'
-                node_attrs[node]['color'] = effective_color_map["TF"]
-                node_attrs[node]['size'] = effective_size_map["TF"]
-                node_attrs[node]['shape'] = effective_shape_map["TF"]
+                node_attrs[node]["type"] = "TF"
+                node_attrs[node]["color"] = effective_color_map["TF"]
+                node_attrs[node]["size"] = effective_size_map["TF"]
+                node_attrs[node]["shape"] = effective_shape_map["TF"]
             elif node in self.ccre_nodes_set:
-                node_attrs[node]['type'] = 'cCRE'
-                node_attrs[node]['color'] = effective_color_map["cCRE"]
-                node_attrs[node]['size'] = effective_size_map["cCRE"]
-                node_attrs[node]['shape'] = effective_shape_map["cCRE"]
+                node_attrs[node]["type"] = "cCRE"
+                node_attrs[node]["color"] = effective_color_map["cCRE"]
+                node_attrs[node]["size"] = effective_size_map["cCRE"]
+                node_attrs[node]["shape"] = effective_shape_map["cCRE"]
             elif node in self.target_nodes_set:
-                node_attrs[node]['type'] = 'Target'
-                node_attrs[node]['size'] = effective_size_map["Target"]
-                node_attrs[node]['shape'] = effective_shape_map["Target"]
+                node_attrs[node]["type"] = "Target"
+                node_attrs[node]["size"] = effective_size_map["Target"]
+                node_attrs[node]["shape"] = effective_shape_map["Target"]
                 for cid, targets in self.target_clusters.items():
                     if node in targets:
-                        node_attrs[node]['color'] = target_colors[cluster_color_map.get(cid, 0)]
-                        node_attrs[node]['cluster'] = cid
+                        node_attrs[node]["color"] = target_colors[cluster_color_map.get(cid, 0)]
+                        node_attrs[node]["cluster"] = cid
                         break
 
         # Assign layout coordinates
         for node, pos_xy in final_pos.items():
-            node_attrs[node]['x'] = pos_xy[0]
-            node_attrs[node]['y'] = pos_xy[1]
-            node_attrs[node]['z'] = 0.0 # Add z-coordinate for 3D viewers
+            node_attrs[node]["x"] = pos_xy[0]
+            node_attrs[node]["y"] = pos_xy[1]
+            node_attrs[node]["z"] = 0.0  # Add z-coordinate for 3D viewers
 
         # Assign edge color and width based on highlight logic
         if highlight:
             h_tfs = set((tf + "_TF") for tf in highlight.get("TF", []))
             h_targets = set((tg + "_TG") for tg in highlight.get("Target", []))
-            if self.network_type == 'triplet':
+            if self.network_type == "triplet":
                 h_ccres_direct = set(highlight.get("cCRE", []))
                 bridge_ccres = set()
                 for tf in h_tfs:
@@ -1771,27 +1844,27 @@ class GRNVisualizer:
                 bridge_ccres.update(h_ccres_direct)
                 for u, v in self.G.edges():
                     if (u in h_tfs and v in bridge_ccres) or (u in bridge_ccres and v in h_targets):
-                        edge_attrs[(u, v)]['color'] = highlight_edge_color
-                        edge_attrs[(u, v)]['width'] = highlight_edge_width
-                        edge_attrs[(u, v)]['alpha'] = 1.0
+                        edge_attrs[(u, v)]["color"] = highlight_edge_color
+                        edge_attrs[(u, v)]["width"] = highlight_edge_width
+                        edge_attrs[(u, v)]["alpha"] = 1.0
                     else:
-                        edge_attrs[(u, v)]['color'] = default_edge_color
-                        edge_attrs[(u, v)]['width'] = default_edge_width
-                        edge_attrs[(u, v)]['alpha'] = 0.5
-            else: # Bipartite
-                 for u, v in self.G.edges():
+                        edge_attrs[(u, v)]["color"] = default_edge_color
+                        edge_attrs[(u, v)]["width"] = default_edge_width
+                        edge_attrs[(u, v)]["alpha"] = 0.5
+            else:  # Bipartite
+                for u, v in self.G.edges():
                     if u in h_tfs and v in h_targets:
-                        edge_attrs[(u, v)]['color'] = highlight_edge_color
-                        edge_attrs[(u, v)]['width'] = highlight_edge_width
-                        edge_attrs[(u, v)]['alpha'] = 1.0
+                        edge_attrs[(u, v)]["color"] = highlight_edge_color
+                        edge_attrs[(u, v)]["width"] = highlight_edge_width
+                        edge_attrs[(u, v)]["alpha"] = 1.0
                     else:
-                        edge_attrs[(u, v)]['color'] = default_edge_color
-                        edge_attrs[(u, v)]['width'] = default_edge_width
-                        edge_attrs[(u, v)]['alpha'] = 0.5
+                        edge_attrs[(u, v)]["color"] = default_edge_color
+                        edge_attrs[(u, v)]["width"] = default_edge_width
+                        edge_attrs[(u, v)]["alpha"] = 0.5
         else:
             for u, v in self.G.edges():
-                edge_attrs[(u, v)]['color'] = default_edge_color
-                edge_attrs[(u, v)]['width'] = default_edge_width
+                edge_attrs[(u, v)]["color"] = default_edge_color
+                edge_attrs[(u, v)]["width"] = default_edge_width
 
         # --- 3. Attach All Attributes to the Graph Object ---
         logg.info("Attaching attributes to the NetworkX graph object...")
@@ -1811,7 +1884,7 @@ class GRNVisualizer:
 
         logg.info(f"✅ Successfully exported network to {path}")
 
-            # --- New Logic: Export the style file if requested ---
+        # --- New Logic: Export the style file if requested ---
         if export_style:
             if style_path is None:
                 # If no path is provided, generate one automatically
@@ -1843,47 +1916,44 @@ class GRNVisualizer:
                 logg.info(f"✅ Successfully exported Cytoscape style to {style_path}")
             except Exception as e:
                 logg.error(f"Failed to write style file: {e}")
-    
+
     def example_interactive_plot(self):
         """
         Example function to demonstrate the creation of an interactive plot.
         """
         from netgraph import InteractiveGraph
+
         # Close any pre-existing figures to avoid duplicates
-        plt.close('all')
-        
+        plt.close("all")
+
         # 1. Create the graph data
         g = nx.house_x_graph()
 
         # 2. Define node and edge styles
         edge_color = dict()
         for ii, edge in enumerate(g.edges):
-            edge_color[edge] = 'tab:gray' if ii%2 else 'tab:orange'
+            edge_color[edge] = "tab:gray" if ii % 2 else "tab:orange"
 
         node_color = dict()
         for node in g.nodes:
-            node_color[node] = 'tab:red' if node%2 else 'tab:blue'
+            node_color[node] = "tab:red" if node % 2 else "tab:blue"
 
         # 3. Create the interactive plot instance
         plot_instance = InteractiveGraph(
-            g, 
-            node_size=5, 
+            g,
+            node_size=5,
             node_color=node_color,
-            node_labels=True, 
-            node_label_offset=0.1, 
+            node_labels=True,
+            node_label_offset=0.1,
             node_label_fontdict=dict(size=20),
-            edge_color=edge_color, 
-            edge_width=2, 
-            edge_layout='bundled',
-            arrows=True
+            edge_color=edge_color,
+            edge_width=2,
+            edge_layout="bundled",
+            arrows=True,
         )
 
         # 4. Display the plot
         plt.show()
-    
+
         # Return the plot instance for potential further manipulation
         return plot_instance
-
-
-
-

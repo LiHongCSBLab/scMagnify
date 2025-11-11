@@ -1,16 +1,14 @@
 """Logging and Profiling"""
+
 from __future__ import annotations
-from typing import TYPE_CHECKING
 
 import datetime
 import functools
 import logging
-
-from scmagnify.utils import check_python_requirements
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
-    from typing import Optional
+    pass
 
 __all__ = [
     "print_versions",
@@ -31,15 +29,15 @@ class _RootLogger(logging.RootLogger):
         super().__init__(level)
         self.propagate = False
         _RootLogger.manager = logging.Manager(self)
-    
+
     def log(
         self,
         level: int,
         msg: str,
         *,
-        extra: Optional[dict] = None,
+        extra: dict | None = None,
         time: datetime.datetime = None,
-        deep: Optional[str] = None,
+        deep: str | None = None,
     ) -> datetime.datetime:
         from scmagnify.settings import settings
 
@@ -102,6 +100,7 @@ class _LogFormatter(logging.Formatter):
         self._style._fmt = format_orig
         return result
 
+
 def print_version_and_date():
     """
     Print version and date.
@@ -124,8 +123,8 @@ def error(
     msg: str,
     *,
     time: datetime.datetime = None,
-    deep: Optional[str] = None,
-    extra: Optional[dict] = None,
+    deep: str | None = None,
+    extra: dict | None = None,
 ) -> datetime.datetime:
     """
     Log message with specific level and return current time.

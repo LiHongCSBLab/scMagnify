@@ -2,21 +2,23 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-## import other packages
-import numpy as np
-import pandas as pd
 import networkx as nx
+
+## import other packages
+import pandas as pd
+
 ## from scmagnify import ..
 from scmagnify import logging as logg
-from scmagnify.utils import _get_data_modal, d, inject_docs
+from scmagnify.utils import d
 
 if TYPE_CHECKING:
-    from typing import Literal, Union, Callable, Dict
-    from anndata import AnnData
-    from mudata import MuData
+    from collections.abc import Callable
+    from typing import Literal
+
     from scmagnify import GRNMuData
 
 __all__ = ["get_network_score"]
+
 
 def _calculate_centrality(G_nx: nx.DiGraph, centrality_func: Callable, nodes: list) -> list:
     """
@@ -38,6 +40,7 @@ def _calculate_centrality(G_nx: nx.DiGraph, centrality_func: Callable, nodes: li
     centrality_values = centrality_func(G_nx)
     return [centrality_values[node] for node in nodes]
 
+
 def _network_score(G_nx: nx.DiGraph) -> pd.DataFrame:
     """
     Calculate a fixed set of centrality measures for all nodes in a directed graph.
@@ -55,13 +58,13 @@ def _network_score(G_nx: nx.DiGraph) -> pd.DataFrame:
     selected_nodes = list(G_nx.nodes())
 
     # Define a dictionary mapping centrality measures to their calculation functions
-    centrality_measures: Dict[str, Callable] = {
-        'degree_centrality': nx.degree_centrality,
-        'degree_centrality(in)': nx.in_degree_centrality,
-        'degree_centrality(out)': nx.out_degree_centrality,
-        'betweenness_centrality': nx.betweenness_centrality,
-        'closeness_centrality': nx.closeness_centrality,
-        'pagerank': nx.pagerank,
+    centrality_measures: dict[str, Callable] = {
+        "degree_centrality": nx.degree_centrality,
+        "degree_centrality(in)": nx.in_degree_centrality,
+        "degree_centrality(out)": nx.out_degree_centrality,
+        "betweenness_centrality": nx.betweenness_centrality,
+        "closeness_centrality": nx.closeness_centrality,
+        "pagerank": nx.pagerank,
     }
 
     # Create an empty DataFrame to store the results
@@ -73,6 +76,7 @@ def _network_score(G_nx: nx.DiGraph) -> pd.DataFrame:
 
     return result_df
 
+
 @d.dedent
 def get_network_score(
     gdata: GRNMuData,
@@ -80,7 +84,7 @@ def get_network_score(
     attri: str = "score",
     key_added: str = "network_score",
     source_only: bool = True,
-) -> Union[pd.DataFrame, dict]:
+) -> pd.DataFrame | dict:
     """
     Calculate centrality measures for all nodes in a directed graph.
 
@@ -101,7 +105,6 @@ def get_network_score(
             If `modal` is "GRN", returns a DataFrame with centrality measures for all nodes.
             If `modal` is "RNA" or "ATAC", returns a dictionary with DataFrames for each modality.
     """
-
     # Convert the data to a NetworkX graph
     G_filtered = gdata.to_nx()
 
@@ -122,9 +125,9 @@ def get_network_score(
     # Filter the DataFrame if source_only is True
     if source_only:
         score_df = score_df.loc[selected_nodes]
-    
+
     score_df["n_targets"] = pd.Series(dict(G_filtered.out_degree()))
-    
+
     logg.debug(score_df.head())
     logg.debug(score_df.shape)
     # Add Nan to the missing nodes
