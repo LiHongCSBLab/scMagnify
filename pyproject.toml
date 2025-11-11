@@ -24,7 +24,7 @@ classifiers = [
 ]
 dependencies = [
   "anndata<=0.10",
-  "cellrank>=2",
+  "cellrank>=2.0.1",
   "decoupler>=2.1.1",
   "deprecated",
   "genomepy>=0.16.1",
