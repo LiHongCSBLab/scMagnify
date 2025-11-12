@@ -10,7 +10,6 @@ from ._barplot import *
 # ------------------
 from ._cell_state_select import cell_state_select
 from ._circosplot import *
-from ._coverage import *
 from ._distplot import *
 from ._dumbbellplot import *
 from ._genome_viewer import *
