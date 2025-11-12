@@ -13,7 +13,7 @@ jobs:
       name: pypi
       url: https://pypi.org/p/scmagnify
     permissions:
-      id-token: write # IMPORTANT: this permission is mandatory for trusted publishing
+      id-token: pypi-AgEIcHlwaS5vcmcCJGIxYWZkZTZhLTY2MTQtNGEyYS1iNDc5LTU2NmU3NjU0OWM0ZQACKlszLCJlNThhNzRkMi00OWEwLTQ4NjYtYTZmNy1jMDJmMzcwY2Q5ZTciXQAABiBpuIOp-xOjG_TkYq2o7-auKh8sMuOFGeLNi5PxRKVh9g # IMPORTANT: this permission is mandatory for trusted publishing
     steps:
       - uses: actions/checkout@v4
         with:
