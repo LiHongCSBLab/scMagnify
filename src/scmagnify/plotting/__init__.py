@@ -13,7 +13,6 @@ from ._circosplot import *
 from ._distplot import *
 from ._dumbbellplot import *
 from ._genome_viewer import *
-from ._gradplot import *
 from ._grn_visualizer import *
 from ._heatmap import *
 from ._rankplot import *
