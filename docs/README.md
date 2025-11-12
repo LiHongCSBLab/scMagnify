@@ -13,6 +13,10 @@ scMagnify is a computational framework to infer GRNs and explore dynamic regulat
 
 ## 🔑scMagnify’s key applications
 
+1. Infer `multi-scale dynamic GRNs` via nonlinear Granger causality, enabling the identification of key regulators and quantification of their regulation lags.
+2. Decompose GRNs into combinatorial regulatory modules (`RegFactors`) via tensor decomposition.
+3. Estimate `regulatory activity` for TFs and RegFactors via [decoupler](https://github.com/scverse/decoupler).
+4. Map signaling-to-transcription cascades linking microenvironment cues to `intracellular regulation`.
 
 ## 🚀Getting started
 
@@ -69,22 +73,25 @@ in particular, the [API documentation][].
 ## 📦Installation
 
 You need to have Python 3.10 or newer installed on your system.
-If you don't have Python installed, we recommend installing [Mambaforge][].
+If you don't have Python installed, we recommend installing [uv](https://github.com/astral-sh/uv).
 
 There are several alternative options to install scMagnify:
 
-<!--
-1) Install the latest release of `scMagnify` from [PyPI][]:
+
+1. Install the latest release of `scMagnify` from [PyPI][]:
 
 ```bash
-pip install scMagnify
+uv pip install scmagnify
 ```
--->
-
-1. Install the latest development version:
+2. Install the latest stable version from conda-forge using mamba or conda
 
 ```bash
-pip install git+https://github.com/xfchen0912/scMagnify.git@main
+mamba create -n=scm conda-forge::scmagnify
+```
+3. Install the latest development version:
+
+```bash
+uv pip install git+https://github.com/xfchen0912/scMagnify.git@main
 ```
 
 ## 🏷️Release notes
