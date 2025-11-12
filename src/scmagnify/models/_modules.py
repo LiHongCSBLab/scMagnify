@@ -15,7 +15,8 @@ if TYPE_CHECKING:
 
 class MSNGC(nn.Module):
     """
-    Generalised VAR (GVAR) model based on self-explaining neural networks.
+    Generalised VAR (GVAR) model based on self-explaining neural networks,
+    primarily based on the concepts described in [1]_.
 
     Parameters
     ----------
@@ -31,6 +32,15 @@ class MSNGC(nn.Module):
         Number of time lags.
     device
         Device to run model on.
+
+    References
+    ----------
+    .. [1] Fan, C., Wang, Y., Zhang, Y., & Ouyang, W. (2023).
+       Interpretable Multi-Scale Neural Network for Granger Causality Discovery.
+       ICASSP 2023 - 2023 IEEE International Conference on Acoustics,
+       Speech and Signal Processing (ICASSP), 1-5.
+       https://doi.org/10.1109/ICASSP49357.2023.10096964
+
     """
 
     def __init__(
