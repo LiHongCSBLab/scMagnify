@@ -54,12 +54,12 @@ jobs:
         run: |
           pip install ${{ matrix.pip-flags }} ".[dev,test]"
           
-      - name: Rebuild MOODS-python from source to match CPU architecture
+      - name: Rebuild MOODS-python from source with safe CFLAGS
         run: |
-          # Uninstall the pre-compiled wheel
           pip uninstall -y MOODS-python
-          # Reinstall from source by disabling the binary wheel
-          pip install --no-binary MOODS-python MOODS-python
+
+          export CFLAGS="-mno-avx -mno-avx2 -mno-avx512"
+          pip install --no-binary MOODS-python --no-cache-dir MOODS-python
           
       - name: Test
         env:
