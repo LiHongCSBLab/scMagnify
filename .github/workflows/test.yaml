@@ -28,7 +28,7 @@ jobs:
           - os: ubuntu-latest
             python: "3.12"
           - os: ubuntu-latest
-            python: "3.12"
+            python: "3.10"
             pip-flags: "--pre"
             name: PRE-RELEASE DEPENDENCIES
 
@@ -53,6 +53,14 @@ jobs:
       - name: Install dependencies
         run: |
           pip install ${{ matrix.pip-flags }} ".[dev,test]"
+          
+      - name: Rebuild MOODS-python from source with safe CFLAGS
+        run: |
+          pip uninstall -y MOODS-python
+
+          export CFLAGS="-mno-avx -mno-avx2 -mno-avx512"
+          pip install --no-binary MOODS-python --no-cache-dir MOODS-python
+          
       - name: Test
         env:
           MPLBACKEND: agg

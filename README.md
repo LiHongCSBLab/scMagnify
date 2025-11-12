@@ -5,7 +5,7 @@
 [![Tests][badge-tests]][tests]
 [![Documentation][badge-docs]][documentation]
 
-[badge-tests]: https://img.shields.io/github/actions/workflow/status/xfchen0912/scMagnify/test.yaml?branch=main
+[badge-tests]: https://img.shields.io/github/actions/workflow/status/LiHongCSBLab/scMagnify/test.yaml?branch=main
 [badge-docs]: https://img.shields.io/readthedocs/scMagnify
 
 scMagnify is a computational framework to infer GRNs and explore dynamic regulation synergy from single-cell multiome data.
