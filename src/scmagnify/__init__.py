@@ -12,5 +12,4 @@ from . import plotting as pl
 from . import tools as tl
 from .models import *
 
-# __version__ = version("scMagnify")
-__version__ = "0.0.0"
+__version__ = version("scmagnify")

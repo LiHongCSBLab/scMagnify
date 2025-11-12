@@ -34,7 +34,7 @@ def supports_html() -> bool:
 
 
 def get_latest_version(
-    url="https://raw.githubusercontent.com/your-username/your-repo/main/pyproject.toml",
+    url="https://raw.githubusercontent.com/LiHongCSBLab/scMagnify/main/pyproject.toml",
     timeout=5,
 ) -> str | None:
     """Fetch the latest package version from a remote pyproject.toml file."""
@@ -159,8 +159,8 @@ def _get_info() -> dict[str, dict]:
     # Repository URL
     info["repo_url"] = {
         "title": "Repository",
-        "message": "https://github.com/your-username/your-repo",
-        "value": "https://github.com/your-username/your-repo",
+        "message": "https://github.com/LiHongCSBLab/scMagnify/",
+        "value": "https://github.com/LiHongCSBLab/scMagnify/",
     }
 
     return info
@@ -181,7 +181,7 @@ def info():
         from IPython.display import HTML, display
 
         # Load logo
-        logo_path = files("scmagnify").joinpath("data/logo_min.png")
+        logo_path = files("scmagnify").joinpath("./logo_min.png")
         try:
             with open(logo_path, "rb") as f:
                 img_bytes = f.read()
