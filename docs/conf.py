@@ -20,15 +20,15 @@ sys.path.insert(0, str(HERE / "extensions"))
 try:
     info = metadata("scmagnify")
     project_name = info.get("Name", "scMagnify")
-    author = info.get("Author", "scMagnify authors")
-    version = info.get("Version", "0.0.0")
+    author = info.get("Author", "Xufeng Chen et al.")
+    version = info.get("Version", "0.0.1")
     urls = dict(pu.split(", ") for pu in (info.get_all("Project-URL") or []))
-    repository_url = urls.get("Source", "https://github.com/xfchen0912/scMagnify")
+    repository_url = urls.get("Source", "https://github.com/LiHongCSBLab/scMagnify")
 except Exception:
     project_name = "scMagnify"
-    author = "scMagnify authors"
+    author = "Xufeng Chen et al."
     version = "0.0.0"
-    repository_url = "https://github.com/xfchen0912/scMagnify"
+    repository_url = "https://github.com/LiHongCSBLab/scMagnify"
 
 # The full version, including alpha/beta/rc tags
 release = version
