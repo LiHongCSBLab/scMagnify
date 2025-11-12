@@ -53,6 +53,14 @@ jobs:
       - name: Install dependencies
         run: |
           pip install ${{ matrix.pip-flags }} ".[dev,test]"
+          
+      - name: Rebuild MOODS-python from source to match CPU architecture
+        run: |
+          # Uninstall the pre-compiled wheel
+          pip uninstall -y MOODS-python
+          # Reinstall from source by disabling the binary wheel
+          pip install --no-binary MOODS-python MOODS-python
+          
       - name: Test
         env:
           MPLBACKEND: agg
