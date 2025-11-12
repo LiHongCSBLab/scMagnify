@@ -4,7 +4,7 @@ requires = [ "hatchling" ]
 
 [project]
 name = "scmagnify"
-version = "0.1.0"
+version = "0.1.1"
 description = "scMagnify is a versatile Python toolkit for inferring and analyzing gene regulatory networks (GRNs) from single-cell multi-omic datasets"
 readme = "README.md"
 license = { file = "LICENSE" }
