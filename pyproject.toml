@@ -4,7 +4,7 @@ requires = [ "hatchling" ]
 
 [project]
 name = "scmagnify"
-version = "0.0.1"
+version = "0.1.0"
 description = "scMagnify is a versatile Python toolkit for inferring and analyzing gene regulatory networks (GRNs) from single-cell multi-omic datasets"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -66,11 +66,11 @@ optional-dependencies.doc = [
   "sphinx-book-theme>=1",
   "sphinx-copybutton",
 
+  "sphinx-design",
   "sphinx-tabs",
   "sphinxcontrib-bibtex>=1",
+  "sphinxcontrib-mermaid",
   "sphinxext-opengraph",
-  "sphinx_design",
-  "sphinxcontrib-mermaid"
 ]
 
 optional-dependencies.test = [

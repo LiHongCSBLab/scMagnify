@@ -21,7 +21,7 @@ try:
     info = metadata("scmagnify")
     project_name = info.get("Name", "scMagnify")
     author = info.get("Author", "Xufeng Chen et al.")
-    version = info.get("Version", "0.0.1")
+    version = info.get("Version", "0.1.0")
     urls = dict(pu.split(", ") for pu in (info.get_all("Project-URL") or []))
     repository_url = urls.get("Source", "https://github.com/LiHongCSBLab/scMagnify")
 except Exception:

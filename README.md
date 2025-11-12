@@ -45,7 +45,7 @@ mamba create -n=scm conda-forge::scmagnify
 3. Install the latest development version:
 
 ```bash
-uv pip install git+https://github.com/xfchen0912/scMagnify.git@main
+uv pip install git+https://github.com/LiHongCSBLab/scMagnify.git@main
 ```
 
 ## 🏷️Release notes
