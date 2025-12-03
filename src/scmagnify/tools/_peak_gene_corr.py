@@ -438,6 +438,13 @@ def connect_peaks_genes(
 
     sc.pp.filter_genes(meta_rna_adata, min_cells=3)
 
+    # # Check GC content in ATAC data
+    # if "GC" not in meta_atac_adata.var.columns:
+    #     from scmagnify.tools._motif_scan import _add_peak_info
+
+    #     logg.info("Adding GC content to ATAC data...")
+    #     _add_peak_info(meta_atac_adata)
+
     if gene_selected is None:
         adata = _get_data_modal(data, rna_key)
         if "significant_genes" in adata.var.keys():

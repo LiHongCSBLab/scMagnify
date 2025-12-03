@@ -2,6 +2,7 @@
 .DS_Store
 *~
 buck-out/
+tmp/
 
 # Compiled files
 .venv/
@@ -22,7 +23,10 @@ __pycache__/
 # docs
 /docs/generated/
 /docs/_build/
+
+# Vibe code assistant
 .aider*
+CLAUDE*
 
 # tox
 .tox/

@@ -17,7 +17,6 @@ from rich.console import Console
 from rich.progress import Progress, TaskID
 from rich.table import Table
 
-import scmagnify as scm
 from scmagnify import logging as logg
 from scmagnify.settings import settings
 from scmagnify.utils import _list_to_str, d
@@ -41,7 +40,7 @@ __all__ = [
 ]
 
 _BACKGROUND = Literal["subject", "genome", "even"]
-MOTIF_DIR = os.path.join(os.path.dirname(scm.__file__), "data", "motifs")
+MOTIF_DIR = os.path.join(settings.scm_data, "motifs")
 
 
 def _add_peak_seq(
@@ -133,7 +132,7 @@ def _add_peak_info(
                     "start": start,
                     "end": end,
                     "width": width,
-                    "GC": gc_content,
+                    "GC_bin": gc_content,
                     "N": n_content,
                 }
             )
@@ -723,7 +722,9 @@ def write_jaspar(motif_dict: dict[str, pd.DataFrame], file_path: str, pseudo_cou
     """
     with open(file_path, "w") as f:
         for motif_id, df in motif_dict.items():
-            f.write(f">{motif_id}\n")
+            # MA0007.3 Ar
+            factor_name = motif_id.split("_")[-1]  # Extract motif name if needed
+            f.write(f">{motif_id} {factor_name}\n")
             # Convert probabilities to pseudo-counts
             counts_df = (df * pseudo_counts).round().astype(int)
 
