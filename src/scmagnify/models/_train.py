@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING
 import decoupler as dc
 import numpy as np
 import pandas as pd
-import scanpy as sc
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -82,6 +81,7 @@ class MAGNI:
         time_key: str = "palantir_pseudotime",
         gene_selected: list[str] | None = None,
         basal_grn: NDArray | None = None,
+        use_rep: str = "X_pca",
         func: nn.Module = MSNGC,
         hidden: list[int] = [50],
         lag: int = 5,
@@ -152,7 +152,7 @@ class MAGNI:
             )
 
         # Preprocess data.
-        self.AX, self.Y, self.T = self._preprocess_data()
+        self.AX, self.Y, self.T = self._preprocess_data(use_rep=use_rep)
 
         self.n_reg = self.adata_fil[:, self.adata_fil.var["is_reg"]].shape[1]
         self.n_target = self.adata_fil[:, self.adata_fil.var["is_target"]].shape[1]
@@ -181,7 +181,7 @@ class MAGNI:
 
         self.criterion = loss.MSELoss()
 
-    def _preprocess_data(self) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def _preprocess_data(self, use_rep="X_pca") -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Preprocess data for training.
 
@@ -191,7 +191,7 @@ class MAGNI:
             Preprocessed data tensors (AX, Y, T).
         """
         # Preprocess data.
-        sc.pp.neighbors(self.adata_fil, n_neighbors=30)
+        # sc.pp.neighbors(self.adata_fil, n_neighbors=30, use_rep=use_rep)
         AX = partial_ordering(self.adata_fil[:, self.adata_fil.var["is_reg"]], dyn=self.time_key, lag=self.lag)
         Y = normalize_data(self.adata_fil[:, self.adata_fil.var["is_target"]].X.A)
         T = self.adata_fil.obs[self.time_key].values
@@ -272,7 +272,7 @@ class MAGNI:
 
             # Temporal smoothness penalty term
             T_idx = np.argsort(T_batch.detach().cpu().numpy())
-            T_plus1 = T + 1
+            T_plus1 = T_idx + 1
             AX_Tplus1 = AX[np.where(np.isin(T_idx, T_plus1))[0], :, :]
 
             coeffs_Tplus1, _, _ = self.model(AX_Tplus1)

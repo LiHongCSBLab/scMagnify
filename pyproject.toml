@@ -28,9 +28,12 @@ dependencies = [
   "decoupler>=2.1.1",
   "deprecated",
   "genomepy>=0.16.1",
+  "ipython<9",
   "moods-python",
   "mudata<=0.2.3",
   "netgraph",
+  "numpy<2",
+  "pandas<=2.3.1",
   "pillow<12",
   "pooch",
   "pyarrow<=20",
@@ -73,11 +76,16 @@ optional-dependencies.doc = [
   "sphinxext-opengraph",
 ]
 
+optional-dependencies.jupyter = [
+  "ipykernel",
+  "ipywidgets",
+]
 optional-dependencies.test = [
   "coverage",
   "pytest",
   "tox",
 ]
+
 # https://docs.pypi.org/project_metadata/#project-urls
 urls.Documentation = "https://scMagnify.readthedocs.io/"
 urls.Homepage = "https://github.com/xfchen0912/scMagnify"
