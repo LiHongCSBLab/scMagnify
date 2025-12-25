@@ -12,8 +12,8 @@ from rich.console import Console
 from rich.table import Table
 
 # Import your package to get its file path
-import scmagnify as scm
 from scmagnify import logging as logg
+from scmagnify.settings import settings
 
 if TYPE_CHECKING:
     from typing import Any
@@ -21,7 +21,10 @@ if TYPE_CHECKING:
 __all__ = ["FuncEnrich"]
 
 # Define the default directory for gene sets within the package
-GENESET_DIR = os.path.join(os.path.dirname(scm.__file__), "data", "genesets")
+if os.path.exists(settings.scm_data):
+    GENESET_DIR = os.path.join(settings.scm_data, "genesets")
+else:
+    GENESET_DIR = None
 
 
 # ==============================================================================
