@@ -40,7 +40,10 @@ __all__ = [
 ]
 
 _BACKGROUND = Literal["subject", "genome", "even"]
-MOTIF_DIR = os.path.join(settings.scm_data, "motifs")
+if os.path.exists(settings.scm_data):
+    MOTIF_DIR = os.path.join(settings.scm_data, "motifs")
+else:
+    MOTIF_DIR = None
 
 
 def _add_peak_seq(

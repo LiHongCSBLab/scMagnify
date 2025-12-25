@@ -84,7 +84,7 @@ class RegDecomp:
         self.filtered_network = self.network.copy()
         for attri in self.network.columns[2:-1]:
             self.filtered_network[attri] = filter_network(
-                self.network, attri=attri, method=filter[0], param=filter[1], binarize=filter[2], verbose=False
+                self.network, attri=attri, method=filter[0], param=filter[1], binarize=filter[2], verbose=True
             )[attri]
 
         logg.info(f"Filtering Network: \n Method: {filter[0]} \n Parameter: {filter[1]} \n Binarize: {filter[2]}")
