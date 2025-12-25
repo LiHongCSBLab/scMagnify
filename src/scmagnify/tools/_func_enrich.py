@@ -20,10 +20,11 @@ if TYPE_CHECKING:
 
 __all__ = ["FuncEnrich"]
 
-# Define the default directory for gene sets within the package
-if os.path.exists(settings.scm_data):
+# Check if settings.scm_data is not None before calling os.path.exists
+if settings.scm_data and os.path.exists(settings.scm_data):
     GENESET_DIR = os.path.join(settings.scm_data, "genesets")
 else:
+    # Default to None or a fallback path
     GENESET_DIR = None
 
 

@@ -40,7 +40,7 @@ __all__ = [
 ]
 
 _BACKGROUND = Literal["subject", "genome", "even"]
-if os.path.exists(settings.scm_data):
+if settings.scm_data and os.path.exists(settings.scm_data):
     MOTIF_DIR = os.path.join(settings.scm_data, "motifs")
 else:
     MOTIF_DIR = None
