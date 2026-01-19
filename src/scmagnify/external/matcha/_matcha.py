@@ -19,7 +19,7 @@ from rich.table import Table
 
 from scmagnify import logging as logg
 from scmagnify.settings import settings
-from scmagnify.utils import ProgressParallel, d
+from scmagnify.utils import d
 
 if TYPE_CHECKING:
     from anndata import AnnData
@@ -35,10 +35,19 @@ class MatchaResult:
     ----------
     program_name : str
         Name of the gene program.
+    genes : list[str]
+        List of genes in the program.
     peaks : pd.DataFrame
         DataFrame of peaks associated with the gene program.
+        Columns: peak (index), gene, cor, pval
     background_peaks : pd.DataFrame
         DataFrame of background peaks matched for GC content and accessibility.
+    motif_scores : pd.DataFrame
+        DataFrame of motif scanning results.
+        Columns: motif_id, motif2factors, seqname, score
+    tf_activity_scores : pd.DataFrame
+        DataFrame of per-cell TF activity scores (chromVAR-like).
+        Index: cell barcodes, Columns: TF names
     tf_prioritization : pd.DataFrame
         DataFrame of prioritized transcription factors.
     cross_dataset_prioritization : pd.DataFrame
@@ -47,24 +56,35 @@ class MatchaResult:
         DataFrame of multi-program TF prioritization.
     """
 
-    def __init__(self, program_name: str):
+    def __init__(self, program_name: str, genes: list[str] | None = None):
         self.program_name = program_name
+        self.genes: list[str] = genes if genes is not None else []
         self.peaks: pd.DataFrame | None = None
         self.background_peaks: pd.DataFrame | None = None
+        self.motif_scores: pd.DataFrame | None = None
+        self.tf_activity_scores: pd.DataFrame | None = None
         self.tf_prioritization: pd.DataFrame | None = None
         self.cross_dataset_prioritization: pd.DataFrame | None = None
         self.multi_program_prioritization: pd.DataFrame | None = None
+        # Internal attribute for storing combined TF data from cross-dataset analysis
+        self._combined_tfs: pd.DataFrame | None = None
 
     def __repr__(self) -> str:
         """String representation of MatchaResult."""
-        return f"MatchaResult(program_name='{self.program_name}')"
+        n_genes = len(self.genes) if self.genes else 0
+        n_peaks = len(self.peaks) if self.peaks is not None else 0
+        n_tfs = len(self.tf_prioritization) if self.tf_prioritization is not None else 0
+        return f"MatchaResult(program_name='{self.program_name}', n_genes={n_genes}, n_peaks={n_peaks}, n_tfs={n_tfs})"
 
     def to_dict(self) -> dict:
         """Convert MatchaResult to dictionary."""
         return {
             "program_name": self.program_name,
+            "genes": self.genes,
             "peaks": self.peaks,
             "background_peaks": self.background_peaks,
+            "motif_scores": self.motif_scores,
+            "tf_activity_scores": self.tf_activity_scores,
             "tf_prioritization": self.tf_prioritization,
             "cross_dataset_prioritization": self.cross_dataset_prioritization,
             "multi_program_prioritization": self.multi_program_prioritization,
@@ -73,9 +93,11 @@ class MatchaResult:
     @classmethod
     def from_dict(cls, data: dict) -> MatchaResult:
         """Create MatchaResult from dictionary."""
-        result = cls(data["program_name"])
+        result = cls(data["program_name"], data.get("genes"))
         result.peaks = data.get("peaks")
         result.background_peaks = data.get("background_peaks")
+        result.motif_scores = data.get("motif_scores")
+        result.tf_activity_scores = data.get("tf_activity_scores")
         result.tf_prioritization = data.get("tf_prioritization")
         result.cross_dataset_prioritization = data.get("cross_dataset_prioritization")
         result.multi_program_prioritization = data.get("multi_program_prioritization")
@@ -151,7 +173,7 @@ class PeakTFPrioritizer:
         program : GeneProgram
             Gene program to add.
         """
-        self.results[program.name] = MatchaResult(program.name)
+        self.results[program.name] = MatchaResult(program.name, genes=program.genes)
         logg.info(f"Added gene program: {program.name} with {len(program.genes)} genes")
 
     @d.dedent
@@ -164,10 +186,12 @@ class PeakTFPrioritizer:
         pval_cutoff: float = 0.1,
         n_jobs: int = 1,
         save_tmp: bool = False,
+        path_to_gtf: str | None = None,
     ) -> MatchaResult:
         """Map gene program to co-accessible peaks.
 
-        This method integrates with the existing peak_gene_corr functionality.
+        This method uses peak-gene correlation analysis to find peaks
+        significantly correlated with genes in the program.
 
         Parameters
         ----------
@@ -185,6 +209,8 @@ class PeakTFPrioritizer:
             Number of parallel jobs (default: 1).
         save_tmp : bool
             Whether to save temporary results (default: False).
+        path_to_gtf : str | None
+            Path to GTF file. If None, uses settings.gtf_file.
 
         Returns
         -------
@@ -197,24 +223,28 @@ class PeakTFPrioritizer:
         program = self.results[program_name]
         genes = program.genes
 
+        if not genes:
+            raise ValueError(f"Gene program '{program_name}' has no genes.")
+
         logg.info(f"Mapping gene program '{program_name}' to peaks...")
+        logg.info(f"  Program contains {len(genes)} genes")
 
         # Import peak_gene_corr functionality
         from scmagnify.tools._peak_gene_corr import connect_peaks_genes
 
-        # Get MuData object
-        if isinstance(self.data, MuData):
-            meta_mdata = self.data
-        else:
+        # Validate data type
+        if not isinstance(self.data, MuData):
             raise ValueError("Data must be a MuData object for peak-gene correlation analysis.")
 
         # Run peak-gene correlation analysis
-        result_data = connect_peaks_genes(
+        # This modifies self.data.uns["peak_gene_corrs"] in place
+        connect_peaks_genes(
             data=self.data,
-            meta_mdata=meta_mdata,
+            meta_mdata=self.data,
             gene_selected=genes,
             rna_key=self.rna_key,
             atac_key=self.atac_key,
+            path_to_gtf=path_to_gtf,
             span=span,
             n_rand_samples=n_rand_samples,
             cor_cutoff=cor_cutoff,
@@ -223,11 +253,18 @@ class PeakTFPrioritizer:
             save_tmp=save_tmp,
         )
 
-        # Extract results
-        if "peak_gene_corrs" in result_data.uns:
-            filtered_corrs = result_data.uns["peak_gene_corrs"]["filtered_corrs"]
-            program.peaks = filtered_corrs
-            logg.info(f"Found {len(filtered_corrs)} significant peak-gene correlations")
+        # Extract results from self.data.uns
+        if "peak_gene_corrs" in self.data.uns:
+            filtered_corrs = self.data.uns["peak_gene_corrs"]["filtered_corrs"]
+            program.peaks = filtered_corrs.copy()
+
+            # Log summary
+            n_peaks = len(filtered_corrs)
+            n_genes_with_peaks = filtered_corrs["gene"].nunique()
+            logg.info(f"Found {n_peaks} significant peak-gene correlations")
+            logg.info(f"  Peaks linked to {n_genes_with_peaks} genes out of {len(genes)} input genes")
+        else:
+            logg.warning("No peak-gene correlations found in data.uns")
 
         return program
 
@@ -244,7 +281,8 @@ class PeakTFPrioritizer:
     ) -> MatchaResult:
         """Scan motifs in peaks associated with the gene program.
 
-        This method integrates with the existing motif_scan functionality.
+        This method scans for transcription factor binding motifs in the
+        program-linked peaks using MOODS.
 
         Parameters
         ----------
@@ -273,7 +311,7 @@ class PeakTFPrioritizer:
 
         program = self.results[program_name]
 
-        if program.peaks is None:
+        if program.peaks is None or len(program.peaks) == 0:
             raise ValueError(f"No peaks found for program '{program_name}'. Run map_genes_to_peaks() first.")
 
         logg.info(f"Scanning motifs in peaks for program '{program_name}'...")
@@ -281,11 +319,14 @@ class PeakTFPrioritizer:
         # Import motif_scan functionality
         from scmagnify.tools._motif_scan import match_motif
 
-        # Get peak list from program.peaks
-        peak_selected = program.peaks.index.to_list()
+        # Get unique peak list from program.peaks
+        # peaks DataFrame has peak as index
+        peak_selected = program.peaks.index.unique().tolist()
+        logg.info(f"  Scanning {len(peak_selected)} unique peaks")
 
         # Run motif scanning
-        result_data = match_motif(
+        # This modifies self.data.uns["motif_scan"] in place
+        match_motif(
             data=self.data,
             modal=self.atac_key,
             peak_selected=peak_selected,
@@ -297,10 +338,19 @@ class PeakTFPrioritizer:
             genome_file=genome_file,
         )
 
-        # Extract results
-        if "motif_scan" in result_data.uns:
-            program.motif_scores = result_data.uns["motif_scan"]["motif_score"]
-            logg.info(f"Found {len(program.motif_scores)} motif matches")
+        # Extract results from self.data.uns
+        if "motif_scan" in self.data.uns:
+            motif_score_df = self.data.uns["motif_scan"]["motif_score"]
+            program.motif_scores = motif_score_df.copy()
+
+            # Log summary
+            n_motif_matches = len(motif_score_df)
+            n_unique_motifs = motif_score_df["motif_id"].nunique()
+            n_unique_tfs = motif_score_df["motif2factors"].nunique()
+            logg.info(f"Found {n_motif_matches} motif matches")
+            logg.info(f"  {n_unique_motifs} unique motifs, {n_unique_tfs} unique TFs")
+        else:
+            logg.warning("No motif scan results found in data.uns")
 
         return program
 
@@ -312,8 +362,18 @@ class PeakTFPrioritizer:
         atac_sample_field: str = "sample",
         motif_name_conversion: pd.DataFrame | None = None,
         gene_name_conversion: pd.DataFrame | None = None,
+        tf_activity_method: Literal["mlm", "ulm", "wsum"] = "ulm",
+        module_score_method: Literal["mlm", "ulm", "wsum"] = "ulm",
     ) -> MatchaResult:
         """Prioritize transcription factors based on accessibility and expression.
+
+        This method implements the TFstoRankedTFs.atac.rna.matcha functionality.
+        It calculates:
+        1. TFchromVAR.ExpressionModule.Cor: Correlation between TF activity scores
+           (from peak accessibility) and module scores (per sample)
+        2. TFexpress.ExpressionModule.Cor: Correlation between TF expression and
+           module scores (per sample)
+        3. overall.scale: Weighted combination of both scaled correlations
 
         Parameters
         ----------
@@ -324,15 +384,28 @@ class PeakTFPrioritizer:
         atac_sample_field : str
             Field name for ATAC sample grouping (default: "sample").
         motif_name_conversion : pd.DataFrame | None
-            DataFrame for motif name conversion.
+            DataFrame for motif name conversion. Should have columns:
+            'motif.name', 'name.universal', 'name.datasetspecific'.
         gene_name_conversion : pd.DataFrame | None
-            DataFrame for gene name conversion.
+            DataFrame for gene name conversion. Should have columns:
+            'name.universal', 'name.datasetspecific'.
+        tf_activity_method : Literal["mlm", "ulm", "wsum"]
+            Decoupler method for TF activity inference (default: "ulm").
+        module_score_method : Literal["mlm", "ulm", "wsum"]
+            Decoupler method for module score calculation (default: "ulm").
 
         Returns
         -------
         MatchaResult
-            Updated MatchaResult with TF prioritization.
+            Updated MatchaResult with TF prioritization containing:
+            - TFchromVAR.ExpressionModule.Cor
+            - TFexpress.ExpressionModule.Cor
+            - TFchromVAR.ExpressionModule.Cor.Scale
+            - TFexpress.ExpressionModule.Cor.Scale
+            - overall.scale
         """
+        from scipy import stats
+
         if program_name not in self.results:
             raise ValueError(f"Gene program '{program_name}' not found. Add it first using add_gene_program().")
 
@@ -341,21 +414,228 @@ class PeakTFPrioritizer:
         if program.peaks is None:
             raise ValueError(f"No peaks found for program '{program_name}'. Run map_genes_to_peaks() first.")
 
+        if program.motif_scores is None:
+            raise ValueError(f"No motif scores found for program '{program_name}'. Run scan_motifs() first.")
+
         logg.info(f"Prioritizing TFs for program '{program_name}'...")
 
-        # This is a placeholder for the actual TF prioritization logic
-        # In a full implementation, this would integrate with the R MATCHA functions
-        # or reimplement them in Python
+        # Validate data type
+        if not isinstance(self.data, MuData):
+            raise ValueError("Data must be a MuData object for ATAC+RNA TF prioritization.")
 
-        # For now, we'll create a simple prioritization based on motif scores
-        if hasattr(program, "motif_scores") and program.motif_scores is not None:
-            # Simple prioritization: sum scores per motif
-            tf_scores = program.motif_scores.groupby("motif_id")["score"].sum().sort_values(ascending=False)
-            program.tf_prioritization = pd.DataFrame({
-                "motif_id": tf_scores.index,
-                "score": tf_scores.values,
-            })
-            logg.info(f"Prioritized {len(program.tf_prioritization)} TFs")
+        # Get RNA and ATAC data
+        rna_adata = self.data.mod[self.rna_key]
+        atac_adata = self.data.mod[self.atac_key]
+
+        # Apply gene name conversion if provided
+        genes = program.genes.copy() if program.genes else []
+        if gene_name_conversion is not None and len(genes) > 0:
+            converted = (
+                gene_name_conversion[
+                    (gene_name_conversion["name.universal"].isin(genes))
+                    & (~gene_name_conversion["name.datasetspecific"].isna())
+                    & (~gene_name_conversion["name.universal"].isna())
+                ]["name.datasetspecific"]
+                .unique()
+                .tolist()
+            )
+            if converted:
+                genes = converted
+
+        # Step 1: Compute TF activity scores if not already done
+        if program.tf_activity_scores is None:
+            logg.info("  Computing TF activity scores...")
+            self.compute_tf_activity_scores(program_name, method=tf_activity_method)
+
+        # Step 2: Compute module scores per sample
+        logg.info("  Computing module scores per sample...")
+        module_scores_df = self.compute_module_score(
+            program_name=program_name,
+            sample_field=rna_sample_field,
+            method=module_score_method,
+        )
+
+        # Step 3: Aggregate TF activity scores by sample
+        logg.info("  Aggregating TF activity scores by sample...")
+
+        # Get per-cell TF activity scores
+        tf_activity_adata = program.tf_activity_scores
+        if tf_activity_adata is None:
+            raise ValueError("TF activity scores not computed.")
+
+        # Convert to DataFrame
+        tf_activity_df = tf_activity_adata.to_df()
+
+        # Add sample information from ATAC data
+        # We need to match cell barcodes
+        common_cells = tf_activity_df.index.intersection(atac_adata.obs_names)
+        if len(common_cells) == 0:
+            raise ValueError("No common cells between TF activity scores and ATAC data.")
+
+        tf_activity_df = tf_activity_df.loc[common_cells]
+        tf_activity_df["sample_name"] = atac_adata.obs.loc[common_cells, atac_sample_field].values
+
+        # Aggregate by sample (mean TF activity per sample)
+        tf_activity_per_sample = tf_activity_df.groupby("sample_name").mean()
+
+        # Step 4: Calculate TF expression per sample
+        logg.info("  Computing TF expression per sample...")
+
+        # Get TF names from motif scores
+        tf_names_from_motifs = program.motif_scores["motif2factors"].unique().tolist()
+
+        # Apply motif name conversion if provided
+        if motif_name_conversion is not None:
+            # Get dataset-specific TF names
+            tf_conversion_map = motif_name_conversion.set_index("name.universal")["name.datasetspecific"].to_dict()
+            tf_names_in_data = []
+            tf_name_mapping = {}  # universal -> dataset-specific
+            for tf in tf_names_from_motifs:
+                if tf in tf_conversion_map:
+                    ds_name = tf_conversion_map[tf]
+                    if pd.notna(ds_name) and ds_name in rna_adata.var_names:
+                        tf_names_in_data.append(ds_name)
+                        tf_name_mapping[tf] = ds_name
+                elif tf in rna_adata.var_names:
+                    tf_names_in_data.append(tf)
+                    tf_name_mapping[tf] = tf
+        else:
+            # Use TF names directly
+            tf_names_in_data = [tf for tf in tf_names_from_motifs if tf in rna_adata.var_names]
+            tf_name_mapping = {tf: tf for tf in tf_names_in_data}
+
+        if not tf_names_in_data:
+            logg.warning("No TFs found in RNA data. Skipping TF expression correlation.")
+            tf_expr_per_sample = None
+        else:
+            # Get TF expression
+            tf_expr_df = rna_adata[:, tf_names_in_data].to_df()
+            tf_expr_df["sample_name"] = rna_adata.obs[rna_sample_field].values
+
+            # Aggregate by sample (mean expression per sample)
+            tf_expr_per_sample = tf_expr_df.groupby("sample_name").mean()
+
+        # Step 5: Align samples across all data sources
+        common_samples = module_scores_df.index.intersection(tf_activity_per_sample.index)
+        if tf_expr_per_sample is not None:
+            common_samples = common_samples.intersection(tf_expr_per_sample.index)
+
+        if len(common_samples) < 3:
+            raise ValueError(
+                f"Not enough common samples ({len(common_samples)}) for correlation analysis. Need at least 3."
+            )
+
+        logg.info(f"  Computing correlations across {len(common_samples)} samples...")
+
+        module_scores_aligned = module_scores_df.loc[common_samples, program_name].values
+        tf_activity_aligned = tf_activity_per_sample.loc[common_samples]
+
+        # Step 6: Calculate TFchromVAR.ExpressionModule.Cor
+        chromvar_correlations = {}
+        for tf in tf_activity_aligned.columns:
+            tf_values = tf_activity_aligned[tf].values
+            # Filter out NaN values
+            valid_mask = ~np.isnan(tf_values) & ~np.isnan(module_scores_aligned)
+            if valid_mask.sum() >= 3:
+                corr, _ = stats.spearmanr(tf_values[valid_mask], module_scores_aligned[valid_mask])
+                if not np.isnan(corr):
+                    chromvar_correlations[tf] = corr
+
+        # Step 7: Calculate TFexpress.ExpressionModule.Cor
+        expression_correlations = {}
+        if tf_expr_per_sample is not None:
+            tf_expr_aligned = tf_expr_per_sample.loc[common_samples]
+            for tf in tf_expr_aligned.columns:
+                tf_values = tf_expr_aligned[tf].values
+                valid_mask = ~np.isnan(tf_values) & ~np.isnan(module_scores_aligned)
+                if valid_mask.sum() >= 3 and np.std(tf_values[valid_mask]) > 0:
+                    corr, _ = stats.spearmanr(tf_values[valid_mask], module_scores_aligned[valid_mask])
+                    if not np.isnan(corr):
+                        expression_correlations[tf] = corr
+
+        # Step 8: Build prioritization DataFrame
+        logg.info("  Building prioritization results...")
+
+        # Create reverse mapping for expression correlations
+        reverse_tf_mapping = {v: k for k, v in tf_name_mapping.items()}
+
+        # Combine results
+        all_tfs = set(chromvar_correlations.keys())
+        prioritization_data = []
+
+        for tf_universal in all_tfs:
+            row = {
+                "name.universal": tf_universal,
+                "TFchromVAR.ExpressionModule.Cor": chromvar_correlations.get(tf_universal, np.nan),
+            }
+
+            # Get expression correlation using dataset-specific name
+            tf_ds = tf_name_mapping.get(tf_universal, tf_universal)
+            row["name.datasetspecific"] = tf_ds
+            row["TFexpress.ExpressionModule.Cor"] = expression_correlations.get(tf_ds, np.nan)
+
+            prioritization_data.append(row)
+
+        if not prioritization_data:
+            logg.warning("No TF prioritization data generated.")
+            return program
+
+        prioritization_df = pd.DataFrame(prioritization_data)
+
+        # Step 9: Calculate scaled values and overall score
+        # Scale chromVAR correlations
+        chromvar_vals = prioritization_df["TFchromVAR.ExpressionModule.Cor"].dropna()
+        if len(chromvar_vals) > 0:
+            min_val = chromvar_vals.min()
+            max_val = chromvar_vals.max()
+            if max_val != min_val:
+                prioritization_df["TFchromVAR.ExpressionModule.Cor.Scale"] = (
+                    prioritization_df["TFchromVAR.ExpressionModule.Cor"] - min_val
+                ) / (max_val - min_val)
+            else:
+                prioritization_df["TFchromVAR.ExpressionModule.Cor.Scale"] = 0.5
+        else:
+            prioritization_df["TFchromVAR.ExpressionModule.Cor.Scale"] = np.nan
+
+        # Scale expression correlations
+        expr_vals = prioritization_df["TFexpress.ExpressionModule.Cor"].dropna()
+        if len(expr_vals) > 0:
+            min_val = expr_vals.min()
+            max_val = expr_vals.max()
+            if max_val != min_val:
+                prioritization_df["TFexpress.ExpressionModule.Cor.Scale"] = (
+                    prioritization_df["TFexpress.ExpressionModule.Cor"] - min_val
+                ) / (max_val - min_val)
+            else:
+                prioritization_df["TFexpress.ExpressionModule.Cor.Scale"] = 0.5
+        else:
+            prioritization_df["TFexpress.ExpressionModule.Cor.Scale"] = np.nan
+
+        # Calculate overall.scale = 0.5 * (chromvar_scale + expr_scale)
+        prioritization_df["overall.scale"] = 0.5 * (
+            prioritization_df["TFchromVAR.ExpressionModule.Cor.Scale"].fillna(0)
+            + prioritization_df["TFexpress.ExpressionModule.Cor.Scale"].fillna(0)
+        )
+
+        # Sort by overall.scale descending
+        prioritization_df = prioritization_df.sort_values("overall.scale", ascending=False)
+
+        # Reorder columns to match R output
+        col_order = [
+            "name.universal",
+            "name.datasetspecific",
+            "overall.scale",
+            "TFchromVAR.ExpressionModule.Cor",
+            "TFexpress.ExpressionModule.Cor",
+            "TFchromVAR.ExpressionModule.Cor.Scale",
+            "TFexpress.ExpressionModule.Cor.Scale",
+        ]
+        prioritization_df = prioritization_df[[c for c in col_order if c in prioritization_df.columns]]
+
+        program.tf_prioritization = prioritization_df
+
+        logg.info(f"Prioritized {len(prioritization_df)} TFs")
+        logg.info(f"  Top 5 TFs: {prioritization_df['name.universal'].head().tolist()}")
 
         return program
 
@@ -385,6 +665,213 @@ class PeakTFPrioritizer:
             Dictionary of all results.
         """
         return self.results.copy()
+
+    def compute_tf_activity_scores(
+        self,
+        program_name: str,
+        method: Literal["mlm", "ulm", "wsum"] = "ulm",
+    ) -> MatchaResult:
+        """Compute TF activity scores for each cell using decoupler.
+
+        This method calculates per-cell TF activity scores by combining
+        peak accessibility with motif binding scores using decoupler's
+        activity inference methods.
+
+        Parameters
+        ----------
+        program_name : str
+            Name of the gene program.
+        method : Literal["mlm", "ulm", "wsum"]
+            Decoupler method for computing activity scores (default: "ulm").
+            - "mlm": Multivariate linear model
+            - "ulm": Univariate linear model
+            - "wsum": Weighted sum
+
+        Returns
+        -------
+        MatchaResult
+            Updated MatchaResult with tf_activity_scores.
+            tf_activity_scores is a DataFrame with cells as rows and TFs as columns.
+        """
+        import decoupler as dc
+
+        if program_name not in self.results:
+            raise ValueError(f"Gene program '{program_name}' not found.")
+
+        program = self.results[program_name]
+
+        if program.peaks is None or len(program.peaks) == 0:
+            raise ValueError(f"No peaks found for program '{program_name}'. Run map_genes_to_peaks() first.")
+
+        if program.motif_scores is None or len(program.motif_scores) == 0:
+            raise ValueError(f"No motif scores found for program '{program_name}'. Run scan_motifs() first.")
+
+        logg.info(f"Computing TF activity scores for program '{program_name}' using decoupler ({method})...")
+
+        # Get ATAC data
+        if isinstance(self.data, MuData):
+            atac_adata = self.data.mod[self.atac_key].copy()
+        else:
+            raise ValueError("Data must be a MuData object.")
+
+        # Get program-linked peaks
+        program_peaks = program.peaks.index.unique().tolist()
+
+        # Filter peaks that exist in ATAC data
+        available_peaks = [p for p in program_peaks if p in atac_adata.var_names]
+        if not available_peaks:
+            raise ValueError("None of the program peaks are found in ATAC data.")
+
+        logg.info(f"  Using {len(available_peaks)} peaks out of {len(program_peaks)} program peaks")
+
+        # Subset ATAC data to program peaks only
+        atac_subset = atac_adata[:, available_peaks].copy()
+
+        # Create network DataFrame for decoupler
+        # Format: source (TF), target (peak), weight (motif score)
+        motif_df = program.motif_scores.copy()
+        motif_df = motif_df[motif_df["seqname"].isin(available_peaks)]
+
+        # Create network with source=TF, target=peak, weight=score
+        net_df = pd.DataFrame(
+            {
+                "source": motif_df["motif2factors"],
+                "target": motif_df["seqname"],
+                "weight": motif_df["score"],
+            }
+        )
+
+        # Aggregate duplicate TF-peak pairs by taking max score
+        net_df = net_df.groupby(["source", "target"], as_index=False)["weight"].max()
+
+        n_tfs = net_df["source"].nunique()
+        n_peaks = net_df["target"].nunique()
+        logg.info(f"  Network: {n_tfs} TFs x {n_peaks} peaks, {len(net_df)} edges")
+
+        # Run decoupler
+        dc.mt.decouple(
+            atac_subset,
+            net=net_df,
+            methods=method,
+            raw=False,
+            verbose=False,
+        )
+
+        # Get activity scores
+        acts = dc.pp.get_obsm(atac_subset, key=f"score_{method}")
+
+        # Store in program result
+        program.tf_activity_scores = acts
+
+        logg.info(f"Computed TF activity scores: {acts.shape[0]} cells x {acts.shape[1]} TFs")
+
+        return program
+
+    def compute_module_score(
+        self,
+        program_name: str,
+        sample_field: str = "sample",
+        method: Literal["ulm", "mlm", "wsum"] = "ulm",
+        n_bins: int = 24,
+        ctrl_size: int = 50,
+    ) -> pd.DataFrame:
+        """Compute gene program module scores per sample using decoupler.
+
+        This method calculates per-cell module scores for genes in the program
+        and then aggregates them by sample (similar to Seurat's AddModuleScore).
+
+        Parameters
+        ----------
+        program_name : str
+            Name of the gene program.
+        sample_field : str
+            Field name for sample grouping in obs (default: "sample").
+        method : Literal["ulm", "mlm", "wsum"]
+            Decoupler method for computing module scores (default: "ulm").
+        n_bins : int
+            Number of expression bins for background gene selection (default: 24).
+            Note: This parameter is for compatibility but not used by decoupler.
+        ctrl_size : int
+            Size of control gene set (default: 50).
+            Note: This parameter is for compatibility but not used by decoupler.
+
+        Returns
+        -------
+        pd.DataFrame
+            DataFrame with sample names as index and mean module scores as values.
+            Columns: [program_name]
+        """
+        import decoupler as dc
+
+        if program_name not in self.results:
+            raise ValueError(f"Gene program '{program_name}' not found.")
+
+        program = self.results[program_name]
+        genes = program.genes
+
+        if not genes:
+            raise ValueError(f"Gene program '{program_name}' has no genes.")
+
+        logg.info(f"Computing module scores for program '{program_name}'...")
+
+        # Get RNA data
+        if isinstance(self.data, MuData):
+            rna_adata = self.data.mod[self.rna_key].copy()
+        else:
+            # Assume it's an AnnData object
+            rna_adata = self.data.copy()
+
+        # Filter genes that exist in the data
+        available_genes = [g for g in genes if g in rna_adata.var_names]
+        if not available_genes:
+            raise ValueError(f"None of the genes in program '{program_name}' are found in RNA data.")
+
+        logg.info(f"  Using {len(available_genes)} genes out of {len(genes)} program genes")
+
+        # Check sample field exists
+        if sample_field not in rna_adata.obs.columns:
+            raise ValueError(f"Sample field '{sample_field}' not found in obs.")
+
+        # Create network DataFrame for decoupler
+        # Format: source (gene set), target (gene), weight
+        net_df = pd.DataFrame(
+            {
+                "source": program_name,
+                "target": available_genes,
+                "weight": 1.0,
+            }
+        )
+
+        # Run decoupler to get per-cell module scores
+        dc.mt.decouple(
+            rna_adata,
+            net=net_df,
+            methods=method,
+            raw=False,
+            verbose=False,
+        )
+
+        # Get per-cell scores
+        cell_scores = dc.pp.get_obsm(rna_adata, key=f"score_{method}")
+
+        # cell_scores is an AnnData with program_name as a column
+        if program_name in cell_scores.var_names:
+            scores_df = cell_scores[:, program_name].to_df()
+        else:
+            # Fall back to first column
+            scores_df = cell_scores.to_df()
+            scores_df.columns = [program_name]
+
+        # Add sample information
+        scores_df["sample_name"] = rna_adata.obs[sample_field].values
+
+        # Aggregate by sample (mean)
+        sample_scores = scores_df.groupby("sample_name")[program_name].mean()
+        sample_scores_df = pd.DataFrame(sample_scores)
+
+        logg.info(f"Computed module scores for {len(sample_scores_df)} samples")
+
+        return sample_scores_df
 
     @d.dedent
     def prioritize_tfs_rna_only(
@@ -432,11 +919,15 @@ class PeakTFPrioritizer:
         # Apply gene name conversion if provided
         genes = program.genes
         if gene_name_conversion is not None:
-            genes = gene_name_conversion[
-                (gene_name_conversion["name.universal"].isin(genes)) &
-                (~gene_name_conversion["name.datasetspecific"].isna()) &
-                (~gene_name_conversion["name.universal"].isna())
-            ]["name.datasetspecific"].unique().tolist()
+            genes = (
+                gene_name_conversion[
+                    (gene_name_conversion["name.universal"].isin(genes))
+                    & (~gene_name_conversion["name.datasetspecific"].isna())
+                    & (~gene_name_conversion["name.universal"].isna())
+                ]["name.datasetspecific"]
+                .unique()
+                .tolist()
+            )
 
         # Filter genes that exist in the data
         genes = [g for g in genes if g in rna_adata.var_names]
@@ -489,17 +980,17 @@ class PeakTFPrioritizer:
 
             # Create prioritization dataframe
             if correlations:
-                prioritization_df = pd.DataFrame({
-                    "name.datasetspecific": list(correlations.keys()),
-                    "TFexpress.ExpressionModule.Cor": list(correlations.values()),
-                })
+                prioritization_df = pd.DataFrame(
+                    {
+                        "name.datasetspecific": list(correlations.keys()),
+                        "TFexpress.ExpressionModule.Cor": list(correlations.values()),
+                    }
+                )
 
                 # Add motif name conversion if provided
                 if motif_name_conversion is not None:
                     prioritization_df = prioritization_df.merge(
-                        motif_name_conversion,
-                        on="name.datasetspecific",
-                        how="left"
+                        motif_name_conversion, on="name.datasetspecific", how="left"
                     )
 
                 # Calculate scaled correlation
@@ -703,7 +1194,9 @@ class MATCHA:
         result : MatchaResult
             The MATCHA result to summarize.
         """
-        table = Table(title=f"MATCHA Analysis Summary: {result.program_name}", show_header=True, header_style="bold white")
+        table = Table(
+            title=f"MATCHA Analysis Summary: {result.program_name}", show_header=True, header_style="bold white"
+        )
         table.add_column("Metric", style="cyan", justify="right")
         table.add_column("Value", style="green")
 
@@ -931,9 +1424,9 @@ class MATCHA:
             min_corr = df["TFexpress.ExpressionModule.Cor"].min()
             max_corr = df["TFexpress.ExpressionModule.Cor"].max()
             if max_corr != min_corr:
-                df["TFexpress.ExpressionModule.Cor.Scale"] = (
-                    df["TFexpress.ExpressionModule.Cor"] - min_corr
-                ) / (max_corr - min_corr)
+                df["TFexpress.ExpressionModule.Cor.Scale"] = (df["TFexpress.ExpressionModule.Cor"] - min_corr) / (
+                    max_corr - min_corr
+                )
             else:
                 df["TFexpress.ExpressionModule.Cor.Scale"] = 0.5
             return df
@@ -946,17 +1439,25 @@ class MATCHA:
         combined_df = pd.concat(scaled_dfs, ignore_index=True)
 
         # Calculate mean scaled value and mean correlation across datasets
-        summary_df = combined_df.groupby(["name.universal", "name.datasetspecific"]).agg({
-            "TFexpress.ExpressionModule.Cor.Scale": "mean",
-            "TFexpress.ExpressionModule.Cor": "mean",
-            "dataset": "count"
-        }).reset_index()
+        summary_df = (
+            combined_df.groupby(["name.universal", "name.datasetspecific"])
+            .agg(
+                {
+                    "TFexpress.ExpressionModule.Cor.Scale": "mean",
+                    "TFexpress.ExpressionModule.Cor": "mean",
+                    "dataset": "count",
+                }
+            )
+            .reset_index()
+        )
 
-        summary_df = summary_df.rename(columns={
-            "TFexpress.ExpressionModule.Cor.Scale": "mean.Scaled.Value",
-            "TFexpress.ExpressionModule.Cor": "mean.Cor.Value",
-            "dataset": "n.datasets"
-        })
+        summary_df = summary_df.rename(
+            columns={
+                "TFexpress.ExpressionModule.Cor.Scale": "mean.Scaled.Value",
+                "TFexpress.ExpressionModule.Cor": "mean.Cor.Value",
+                "dataset": "n.datasets",
+            }
+        )
 
         # Filter TFs present in all datasets
         max_datasets = summary_df["n.datasets"].max()
@@ -972,9 +1473,7 @@ class MATCHA:
         extreme_tfs = top_tfs + bottom_tfs
 
         # Prepare data for visualization
-        plot_df = combined_df[
-            combined_df["name.universal"].isin(extreme_tfs)
-        ].copy()
+        plot_df = combined_df[combined_df["name.universal"].isin(extreme_tfs)].copy()
 
         # Create visualization
         plt.figure(figsize=(plot_width, plot_height))
@@ -987,7 +1486,7 @@ class MATCHA:
             hue="dataset",
             style="dataset",
             s=100,
-            alpha=0.7
+            alpha=0.7,
         )
 
         plt.axvline(x=0, color="gray", linestyle="--", alpha=0.5)
@@ -997,7 +1496,9 @@ class MATCHA:
         plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
 
         # Save plot
-        plot_file = os.path.join(os.path.dirname(dataset_folders[0]), f"{program_name}_CrossDatasetTFPrioritization.png")
+        plot_file = os.path.join(
+            os.path.dirname(dataset_folders[0]), f"{program_name}_CrossDatasetTFPrioritization.png"
+        )
         plt.tight_layout()
         plt.savefig(plot_file, dpi=300, bbox_inches="tight")
         plt.close()
@@ -1064,41 +1565,45 @@ class MATCHA:
         # Import required libraries
         try:
             import matplotlib.pyplot as plt
-            import seaborn as sns
             import networkx as nx
         except ImportError:
-            raise ImportError("matplotlib, seaborn, and networkx are required for multi-program prioritization")
+            raise ImportError("matplotlib and networkx are required for multi-program prioritization")
 
         # Collect TF prioritization data for all programs
         extreme_tfs = []
         for program_name, genes in gene_programs.items():
             # Find cross-dataset prioritization file
-            prioritization_file = os.path.join(base_folder, program_name, f"{program_name}_CrossDatasetTFPrioritization.xlsx")
+            prioritization_file = os.path.join(
+                base_folder, program_name, f"{program_name}_CrossDatasetTFPrioritization.xlsx"
+            )
 
             if not os.path.exists(prioritization_file):
                 raise ValueError(f"Cross-dataset prioritization file not found: {prioritization_file}")
 
             # Read prioritization data
             try:
-                import pandas as pd
                 # Read Excel file (assuming it has a sheet named "CrossDataset.Prioritization")
                 priority_df = pd.read_excel(prioritization_file, sheet_name="CrossDataset.Prioritization")
             except Exception as e:
-                raise ValueError(f"Error reading prioritization file for program '{program_name}': {e}")
+                raise ValueError(f"Error reading prioritization file for program '{program_name}': {e}") from e
 
             # Get top and bottom TFs
             if "mean.Scaled.Value" not in priority_df.columns:
-                raise ValueError(f"Column 'mean.Scaled.Value' not found in prioritization data for program '{program_name}'")
+                raise ValueError(
+                    f"Column 'mean.Scaled.Value' not found in prioritization data for program '{program_name}'"
+                )
 
             tfs_up = priority_df.nlargest(n_tfs_per_program, "mean.Scaled.Value")["name.universal"].tolist()
             tfs_down = priority_df.nsmallest(n_tfs_per_program, "mean.Scaled.Value")["name.universal"].tolist()
 
             # Create data frame for this program
-            program_tfs = pd.DataFrame({
-                "name.universal": tfs_up + tfs_down,
-                "value": [1] * len(tfs_up) + [-1] * len(tfs_down),
-                "program": program_name
-            })
+            program_tfs = pd.DataFrame(
+                {
+                    "name.universal": tfs_up + tfs_down,
+                    "value": [1] * len(tfs_up) + [-1] * len(tfs_down),
+                    "program": program_name,
+                }
+            )
 
             extreme_tfs.append(program_tfs)
 
@@ -1109,19 +1614,14 @@ class MATCHA:
         extreme_tfs_df = pd.concat(extreme_tfs, ignore_index=True)
 
         # Create links for network
-        links = extreme_tfs_df.rename(columns={
-            "name.universal": "source",
-            "program": "target"
-        })
+        links = extreme_tfs_df.rename(columns={"name.universal": "source", "program": "target"})
 
         # Convert value to factor with labels
         links["value"] = links["value"].astype(str)
         links["value"] = links["value"].replace({"1": "Predict\nActivate", "-1": "Predict\nRepress"})
 
         # Create nodes
-        nodes_df = pd.DataFrame({
-            "node.name": list(set(links["source"].tolist() + links["target"].tolist()))
-        })
+        nodes_df = pd.DataFrame({"node.name": list(set(links["source"].tolist() + links["target"].tolist()))})
 
         # Determine node type
         nodes_df["node.type"] = nodes_df["node.name"].apply(
@@ -1141,9 +1641,7 @@ class MATCHA:
 
         # Add degree to nodes
         nodes_df = nodes_df.merge(
-            node_degree_filtered.rename(columns={"source": "node.name"}),
-            on="node.name",
-            how="left"
+            node_degree_filtered.rename(columns={"source": "node.name"}), on="node.name", how="left"
         )
 
         # Create node labels
@@ -1158,11 +1656,7 @@ class MATCHA:
 
         # Create network
         G = nx.from_pandas_edgelist(
-            links,
-            source="source",
-            target="target",
-            edge_attr="value",
-            create_using=nx.DiGraph()
+            links, source="source", target="target", edge_attr="value", create_using=nx.DiGraph()
         )
 
         # Add node attributes
@@ -1185,32 +1679,16 @@ class MATCHA:
         for u, v, data in G.edges(data=True):
             color = edge_colors.get(data["value"], "gray")
             nx.draw_networkx_edges(
-                G, pos,
-                edgelist=[(u, v)],
-                edge_color=color,
-                width=1.5,
-                arrowstyle="->",
-                arrowsize=15,
-                node_size=1000
+                G, pos, edgelist=[(u, v)], edge_color=color, width=1.5, arrowstyle="->", arrowsize=15, node_size=1000
             )
 
         # Draw nodes
         node_color_list = [node_colors[G.nodes[n]["type"]] for n in G.nodes()]
-        nx.draw_networkx_nodes(
-            G, pos,
-            node_color=node_color_list,
-            node_size=1000,
-            alpha=0.8
-        )
+        nx.draw_networkx_nodes(G, pos, node_color=node_color_list, node_size=1000, alpha=0.8)
 
         # Draw labels
         labels = {n: G.nodes[n]["label"] for n in G.nodes()}
-        nx.draw_networkx_labels(
-            G, pos,
-            labels=labels,
-            font_size=plot_font_size,
-            font_weight="bold"
-        )
+        nx.draw_networkx_labels(G, pos, labels=labels, font_size=plot_font_size, font_weight="bold")
 
         plt.title("Multi-Program Cross-Dataset TF Prioritization", fontsize=plot_font_size + 2)
         plt.axis("off")
@@ -1230,11 +1708,13 @@ class MATCHA:
         export_data = {
             "links": links,
             "nodes": nodes_df,
-            "network": pd.DataFrame({
-                "source": [e[0] for e in G.edges()],
-                "target": [e[1] for e in G.edges()],
-                "value": [G.edges[e]["value"] for e in G.edges()]
-            })
+            "network": pd.DataFrame(
+                {
+                    "source": [e[0] for e in G.edges()],
+                    "target": [e[1] for e in G.edges()],
+                    "value": [G.edges[e]["value"] for e in G.edges()],
+                }
+            ),
         }
 
         # Save to Excel
@@ -1247,14 +1727,10 @@ class MATCHA:
             logg.warning(f"Could not save Excel file: {e}")
 
         # Return results
-        results = {
-            "links": links,
-            "nodes": nodes_df,
-            "network": G,
-            "plot_file": plot_file,
-            "excel_file": excel_file
-        }
+        results = {"links": links, "nodes": nodes_df, "network": G, "plot_file": plot_file, "excel_file": excel_file}
 
-        logg.info(f"Multi-program cross-dataset prioritization complete. Found {len(nodes_df)} nodes ({len(nodes_df[nodes_df['node.type'] == 'TF'])} TFs, {len(nodes_df[nodes_df['node.type'] == 'Module'])} modules)")
+        logg.info(
+            f"Multi-program cross-dataset prioritization complete. Found {len(nodes_df)} nodes ({len(nodes_df[nodes_df['node.type'] == 'TF'])} TFs, {len(nodes_df[nodes_df['node.type'] == 'Module'])} modules)"
+        )
 
         return results
