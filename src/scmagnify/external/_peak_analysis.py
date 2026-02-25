@@ -47,6 +47,7 @@ from sklearn.cluster import KMeans
 from scmagnify import logging as logg
 
 if TYPE_CHECKING:
+    from anndata import AnnData
     from mudata import MuData
 
 __all__ = ["PeakAnalyser"]
@@ -60,52 +61,66 @@ class PeakAnalyser:
 
     Parameters
     ----------
-    gdata : MuData
-        A MuData or GRNMuData object containing at minimum an ATAC modality.
+    data : MuData | AnnData
+        A MuData/GRNMuData object containing at minimum an ATAC modality,
+        OR an AnnData object containing metacell/pseudobulk ATAC data.
         Data should be pre-aggregated at the metacell level.
 
     Attributes
     ----------
-    gdata : MuData
-        Reference to the input MuData object
+    gdata : MuData | None
+        Reference to the input MuData object (None if AnnData was provided)
     atac : AnnData
-        Direct reference to the ATAC modality
+        Direct reference to the ATAC modality (or the input AnnData)
 
     Raises
     ------
     TypeError
-        If gdata is not a MuData or GRNMuData object
+        If data is not a MuData, GRNMuData, or AnnData object
     ValueError
-        If ATAC modality is not present in gdata
+        If ATAC modality is not present in MuData
 
     Examples
     --------
+    >>> # Using MuData with ATAC modality
     >>> analyser = PeakAnalyser(gdata)
+    >>> analyser.differential_accessibility(groupby="cell_type")
+    >>>
+    >>> # Using metacell/pseudobulk ATAC AnnData directly
+    >>> analyser = PeakAnalyser(atac_adata)
     >>> analyser.differential_accessibility(groupby="cell_type")
     """
 
-    def __init__(self, gdata: MuData):
-        """Initialize PeakAnalyser with GRNMuData."""
-        # Validate input type
-        if not hasattr(gdata, "mod"):
+    def __init__(self, data: "MuData | AnnData"):
+        """Initialize PeakAnalyser with MuData or AnnData."""
+        from anndata import AnnData
+
+        self.gdata = None
+        self.atac = None
+
+        if isinstance(data, AnnData):
+            self.atac = data
+            logg.info(
+                f"PeakAnalyser initialized with AnnData: {self.atac.n_obs} metacells and {self.atac.n_vars} peaks"
+            )
+        elif hasattr(data, "mod"):
+            if "ATAC" not in data.mod:
+                available_mods = ", ".join(data.mod.keys())
+                raise ValueError(
+                    f"ATAC modality not found in MuData object. "
+                    f"Available modalities: {available_mods}. "
+                    "Please ensure your data includes an ATAC modality."
+                )
+            self.gdata = data
+            self.atac = data.mod["ATAC"]
+            logg.info(f"PeakAnalyser initialized with {self.atac.n_obs} metacells and {self.atac.n_vars} peaks")
+        else:
             raise TypeError(
-                f"Expected MuData or GRNMuData object, got {type(gdata).__name__}. "
-                "Please provide a valid MuData object."
+                f"Expected MuData, GRNMuData, or AnnData object, got {type(data).__name__}. "
+                "Please provide a valid MuData or AnnData object."
             )
 
-        # Validate ATAC modality exists
-        if "ATAC" not in gdata.mod:
-            available_mods = ", ".join(gdata.mod.keys())
-            raise ValueError(
-                f"ATAC modality not found in MuData object. "
-                f"Available modalities: {available_mods}. "
-                "Please ensure your data includes an ATAC modality."
-            )
-
-        self.gdata = gdata
-        self.atac = gdata.mod["ATAC"]
-
-        logg.info(f"PeakAnalyser initialized with {self.atac.n_obs} metacells and {self.atac.n_vars} peaks")
+        self._peak_gene_corrs = None
 
     def _validate_groupby(self, groupby: str) -> None:
         """Validate that groupby column exists in obs.
@@ -113,7 +128,7 @@ class PeakAnalyser:
         Parameters
         ----------
         groupby : str
-            Column name in gdata.obs
+            Column name in atac.obs
 
         Raises
         ------
@@ -126,8 +141,45 @@ class PeakAnalyser:
                 f"Column '{groupby}' not found in ATAC modality obs. Available columns (first 10): {available_cols}..."
             )
 
+    def set_peak_gene_correlations(self, corr_df: pd.DataFrame) -> None:
+        """Set peak-gene correlations directly from a DataFrame.
+
+        Parameters
+        ----------
+        corr_df : pd.DataFrame
+            Peak-gene correlation table with columns: peak, gene, cor, pval
+            (pval is optional)
+
+        Raises
+        ------
+        ValueError
+            If required columns are missing
+
+        Examples
+        --------
+        >>> import pandas as pd
+        >>> corr_df = pd.DataFrame(
+        ...     {
+        ...         "peak": ["chr1:1000-2000", "chr1:3000-4000"],
+        ...         "gene": ["GENE1", "GENE2"],
+        ...         "cor": [0.5, 0.3],
+        ...         "pval": [0.01, 0.05],
+        ...     }
+        ... )
+        >>> analyser.set_peak_gene_correlations(corr_df)
+        """
+        required_cols = ["peak", "gene", "cor"]
+        missing_cols = set(required_cols) - set(corr_df.columns)
+        if missing_cols:
+            raise ValueError(
+                f"Missing required columns in correlation DataFrame: {missing_cols}. Required columns: {required_cols}"
+            )
+
+        self._peak_gene_corrs = corr_df
+        logg.info(f"Set peak-gene correlations with {len(corr_df)} peak-gene pairs")
+
     def _load_peak_gene_correlations(self) -> pd.DataFrame:
-        """Load peak-gene correlations from uns.
+        """Load peak-gene correlations from attribute or uns.
 
         Returns
         -------
@@ -137,12 +189,23 @@ class PeakAnalyser:
         Raises
         ------
         ValueError
-            If peak_gene_corrs not found in uns
+            If correlations not found in attribute or uns
         """
+        if self._peak_gene_corrs is not None:
+            return self._peak_gene_corrs
+
+        if self.gdata is None:
+            raise ValueError(
+                "Peak-gene correlations not provided. "
+                "Use set_peak_gene_correlations() to provide a DataFrame, "
+                "or initialize with MuData that contains gdata.uns['peak_gene_corrs']."
+            )
+
         if "peak_gene_corrs" not in self.gdata.uns:
             raise ValueError(
                 "Peak-gene correlations not found in gdata.uns['peak_gene_corrs']. "
-                "Please run scmagnify.tools.peak_gene_corr() first to calculate correlations."
+                "Please run scmagnify.tools.peak_gene_corr() first to calculate correlations, "
+                "or use set_peak_gene_correlations() to provide a DataFrame."
             )
 
         corr_data = self.gdata.uns["peak_gene_corrs"]
@@ -280,15 +343,14 @@ class PeakAnalyser:
 
         inference = DefaultInference(n_cpus=kwargs.pop("n_cpus", 8))
 
-        # Initialize storage
-        if key_added not in self.gdata.uns:
-            self.gdata.uns[key_added] = {}
+        uns_storage = self.gdata.uns if self.gdata is not None else self.atac.uns
 
-        # Perform pairwise comparisons
+        if key_added not in uns_storage:
+            uns_storage[key_added] = {}
+
         if len(groups) == 2:
             contrasts = [(groups[0], groups[1])]
         else:
-            # All pairwise combinations
             from itertools import combinations
 
             contrasts = list(combinations(groups, 2))
@@ -297,11 +359,9 @@ class PeakAnalyser:
             contrast_name = f"{group_a}_vs_{group_b}"
             logg.info(f"Comparing {group_a} vs {group_b}...")
 
-            # Subset data to two groups
             mask = self.atac.obs[groupby].isin([group_a, group_b])
             adata_subset = self.atac[mask, :].copy()
 
-            # Prepare count matrix and metadata
             counts = adata_subset.X
             if hasattr(counts, "toarray"):
                 counts = counts.toarray()
@@ -310,7 +370,6 @@ class PeakAnalyser:
             metadata = pd.DataFrame({groupby: adata_subset.obs[groupby].values}, index=adata_subset.obs_names)
 
             try:
-                # Run DESeq2 (following official pyDESeq2 tutorial)
                 dds = DeseqDataSet(
                     counts=counts_df,
                     metadata=metadata,
@@ -321,13 +380,11 @@ class PeakAnalyser:
                 )
                 dds.deseq2()
 
-                # Get results
                 stat_res = DeseqStats(dds, contrast=[groupby, group_a, group_b], inference=inference)
                 stat_res.summary()
                 results_df = stat_res.results_df
 
-                # Store detailed results
-                self.gdata.uns[key_added][contrast_name] = results_df
+                uns_storage[key_added][contrast_name] = results_df
 
                 # Add summary to var
                 col_lfc = f"dar_log2fc_{contrast_name}"
@@ -360,32 +417,29 @@ class PeakAnalyser:
         """
         logg.info("Using Wilcoxon rank-sum test for DAR analysis...")
 
-        # Filter to specified groups
         if len(groups) < len(self.atac.obs[groupby].unique()):
             mask = self.atac.obs[groupby].isin(groups)
             adata_subset = self.atac[mask, :].copy()
         else:
             adata_subset = self.atac.copy()
 
-        # Run scanpy's rank_genes_groups (works for peaks too)
         sc.tl.rank_genes_groups(adata_subset, groupby=groupby, method="wilcoxon", key_added=key_added, **kwargs)
 
-        # Extract and reformat results
-        if key_added not in self.gdata.uns:
-            self.gdata.uns[key_added] = {}
+        uns_storage = self.gdata.uns if self.gdata is not None else self.atac.uns
+
+        if key_added not in uns_storage:
+            uns_storage[key_added] = {}
 
         result = adata_subset.uns[key_added]
         groups_tested = result["names"].dtype.names
 
         for group in groups_tested:
-            # Get results for this group
             peak_names = result["names"][group]
             scores = result["scores"][group]
             pvals = result["pvals"][group]
             pvals_adj = result["pvals_adj"][group]
             logfoldchanges = result["logfoldchanges"][group]
 
-            # Create DataFrame
             results_df = pd.DataFrame(
                 {
                     "peak": peak_names,
@@ -396,10 +450,8 @@ class PeakAnalyser:
                 }
             )
 
-            # Store in uns
-            self.gdata.uns[key_added][f"{group}_vs_rest"] = results_df
+            uns_storage[key_added][f"{group}_vs_rest"] = results_df
 
-            # Add to var
             col_lfc = f"dar_log2fc_{group}_vs_rest"
             col_padj = f"dar_padj_{group}_vs_rest"
             self.atac.var[col_lfc] = results_df.set_index("peak")["log2FoldChange"].reindex(
@@ -426,19 +478,15 @@ class PeakAnalyser:
         key_added : str
             Key for storing results
         """
-        # Subset to two groups
         mask = self.atac.obs[groupby].isin([group_a, group_b])
         adata_subset = self.atac[mask, :].copy()
 
-        # Temporarily relabel for rank_genes_groups
         adata_subset.obs["_contrast_group"] = adata_subset.obs[groupby].astype(str)
 
-        # Run Wilcoxon
         sc.tl.rank_genes_groups(
             adata_subset, groupby="_contrast_group", groups=[group_a], reference=group_b, method="wilcoxon"
         )
 
-        # Extract results
         result = adata_subset.uns["rank_genes_groups"]
         peak_names = result["names"][group_a]
         scores = result["scores"][group_a]
@@ -450,10 +498,11 @@ class PeakAnalyser:
             {"peak": peak_names, "score": scores, "pval": pvals, "padj": pvals_adj, "log2FoldChange": logfoldchanges}
         )
 
-        contrast_name = f"{group_a}_vs_{group_b}"
-        self.gdata.uns[key_added][contrast_name] = results_df
+        uns_storage = self.gdata.uns if self.gdata is not None else self.atac.uns
 
-        # Add to var
+        contrast_name = f"{group_a}_vs_{group_b}"
+        uns_storage[key_added][contrast_name] = results_df
+
         col_lfc = f"dar_log2fc_{contrast_name}"
         col_padj = f"dar_padj_{contrast_name}"
         self.atac.var[col_lfc] = results_df.set_index("peak")["log2FoldChange"].reindex(
@@ -663,11 +712,10 @@ class PeakAnalyser:
         cluster_labels = kmeans.fit_predict(temporal_matrix)
         centers = kmeans.cluster_centers_
 
-        # Store results
         self.atac.var["temporal_cluster"] = cluster_labels
-        self.gdata.uns[key_added] = {"method": "kmeans", "centers": centers, "n_clusters": n_clusters}
+        uns_storage = self.gdata.uns if self.gdata is not None else self.atac.uns
+        uns_storage[key_added] = {"method": "kmeans", "centers": centers, "n_clusters": n_clusters}
 
-        # Log cluster sizes
         unique, counts = np.unique(cluster_labels, return_counts=True)
         for cluster_id, count in zip(unique, counts):
             logg.info(f"Cluster {cluster_id}: {count} peaks")
@@ -712,17 +760,16 @@ class PeakAnalyser:
         )
 
         # u is (n_clusters, n_peaks), membership values
-        memberships = u.T  # Now (n_peaks, n_clusters)
+        memberships = u.T
 
-        # Hard assignment: cluster with highest membership
         cluster_labels = np.argmax(memberships, axis=1)
 
-        # Store results
         self.atac.var["temporal_cluster"] = cluster_labels
         for k in range(n_clusters):
             self.atac.var[f"fuzzy_membership_k{k}"] = memberships[:, k]
 
-        self.gdata.uns[key_added] = {
+        uns_storage = self.gdata.uns if self.gdata is not None else self.atac.uns
+        uns_storage[key_added] = {
             "method": "fuzzy",
             "centers": cntr.T,
             "memberships": memberships,
@@ -731,12 +778,10 @@ class PeakAnalyser:
             "fpc": fpc,
         }
 
-        # Log cluster sizes and multi-module peaks
         unique, counts = np.unique(cluster_labels, return_counts=True)
         for cluster_id, count in zip(unique, counts):
             logg.info(f"Cluster {cluster_id}: {count} peaks")
 
-        # Check for multi-module peaks (membership > 0.3 in multiple clusters)
         multi_module_mask = (memberships > 0.3).sum(axis=1) > 1
         n_multi = multi_module_mask.sum()
         if n_multi > 0:
@@ -763,7 +808,9 @@ class PeakAnalyser:
             List of peak IDs to use. If None, uses all peaks with correlations
             to genes in gene_set.
         layer_name : str, default 'primed_score'
-            Name of layer in `gdata['RNA'].layers` to store scores
+            Name for storing scores. If RNA modality exists, stored in
+            `gdata['RNA'].layers[layer_name]`. Otherwise, stored in
+            `atac.obs` as '{layer_name}_<gene>' columns.
         use_magic : bool, default True
             Whether to apply MAGIC imputation to reduce sparsity
         **kwargs
@@ -772,13 +819,11 @@ class PeakAnalyser:
         Returns
         -------
         None
-            Scores are stored in `gdata['RNA'].layers[layer_name]`
-            as a cells × genes matrix
 
         Raises
         ------
         ValueError
-            If genes not found in RNA modality or correlations not available
+            If genes not found in RNA modality (when available) or correlations not available
         ImportError
             If magic-impute is not installed when use_magic=True
 
@@ -803,14 +848,19 @@ class PeakAnalyser:
 
         Examples
         --------
-        >>> # Calculate primed scores for gene set
-        >>> analyser.primed_score(gene_set=["GENE1", "GENE2", "GENE3"], layer_name="primed_score")
+        >>> # Using MuData with RNA modality
+        >>> analyser = PeakAnalyser(gdata)
+        >>> analyser.primed_score(gene_set=["GENE1", "GENE2", "GENE3"])
+        >>>
+        >>> # Using metacell ATAC AnnData with provided correlations
+        >>> analyser = PeakAnalyser(atac_adata)
+        >>> analyser.set_peak_gene_correlations(corr_df)
+        >>> analyser.primed_score(gene_set=["GENE1", "GENE2"])
         >>>
         >>> # Use specific peaks only
         >>> analyser.primed_score(
         ...     gene_set=["GENE1", "GENE2"],
         ...     peak_set=["chr1:1000-2000", "chr2:3000-4000"],
-        ...     layer_name="primed_score_subset",
         ... )
         >>>
         >>> # Skip MAGIC imputation
@@ -839,7 +889,9 @@ class PeakAnalyser:
             List of lineage-specific peak IDs to use. If None, uses all peaks
             with correlations to genes in gene_set.
         layer_name : str, default 'lineage_score'
-            Name of layer in `gdata['RNA'].layers` to store scores
+            Name for storing scores. If RNA modality exists, stored in
+            `gdata['RNA'].layers[layer_name]`. Otherwise, stored in
+            `atac.obs` as '{layer_name}_<gene>' columns.
         use_magic : bool, default True
             Whether to apply MAGIC imputation to reduce sparsity
         **kwargs
@@ -848,7 +900,6 @@ class PeakAnalyser:
         Returns
         -------
         None
-            Scores are stored in `gdata['RNA'].layers[layer_name]`
 
         See Also
         --------
@@ -856,7 +907,14 @@ class PeakAnalyser:
 
         Examples
         --------
-        >>> analyser.lineage_score(gene_set=["LINEAGE_GENE1", "LINEAGE_GENE2"], layer_name="lineage_score")
+        >>> # Using MuData with RNA modality
+        >>> analyser = PeakAnalyser(gdata)
+        >>> analyser.lineage_score(gene_set=["LINEAGE_GENE1", "LINEAGE_GENE2"])
+        >>>
+        >>> # Using metacell ATAC AnnData with provided correlations
+        >>> analyser = PeakAnalyser(atac_adata)
+        >>> analyser.set_peak_gene_correlations(corr_df)
+        >>> analyser.lineage_score(gene_set=["LINEAGE_GENE1", "LINEAGE_GENE2"])
         """
         self._compute_regulatory_score(gene_set, peak_set, layer_name, use_magic, "lineage", **kwargs)
 
@@ -878,7 +936,7 @@ class PeakAnalyser:
         peak_set : list of str or None
             Peaks to use
         layer_name : str
-            Layer name for output
+            Layer/column name for output
         use_magic : bool
             Whether to use MAGIC
         score_type : str
@@ -888,32 +946,26 @@ class PeakAnalyser:
         """
         logg.info(f"Computing {score_type} scores for {len(gene_set)} genes")
 
-        # Validate RNA modality exists
-        if "RNA" not in self.gdata.mod:
-            raise ValueError("RNA modality not found in MuData. Cannot compute regulatory scores.")
+        rna = None
+        if self.gdata is not None and "RNA" in self.gdata.mod:
+            rna = self.gdata.mod["RNA"]
+            missing_genes = set(gene_set) - set(rna.var_names)
+            if missing_genes:
+                raise ValueError(
+                    f"Genes not found in RNA modality: {list(missing_genes)[:10]}... "
+                    f"Total missing: {len(missing_genes)}/{len(gene_set)}"
+                )
 
-        rna = self.gdata.mod["RNA"]
-
-        # Validate genes exist
-        missing_genes = set(gene_set) - set(rna.var_names)
-        if missing_genes:
-            raise ValueError(
-                f"Genes not found in RNA modality: {list(missing_genes)[:10]}... "
-                f"Total missing: {len(missing_genes)}/{len(gene_set)}"
-            )
-
-        # Load peak-gene correlations
         corr_df = self._load_peak_gene_correlations()
 
-        # Filter correlations to gene_set
         corr_df = corr_df[corr_df["gene"].isin(gene_set)]
         if len(corr_df) == 0:
             raise ValueError(
                 f"No peak-gene correlations found for the specified genes. "
-                "Ensure peak_gene_corr() was run for these genes."
+                "Use set_peak_gene_correlations() to provide correlations, "
+                "or ensure peak_gene_corr() was run for these genes."
             )
 
-        # Filter to peak_set if provided
         if peak_set is not None:
             corr_df = corr_df[corr_df["peak"].isin(peak_set)]
             if len(corr_df) == 0:
@@ -921,7 +973,6 @@ class PeakAnalyser:
 
         logg.info(f"Using {len(corr_df)} peak-gene pairs from correlations")
 
-        # Get relevant peaks
         relevant_peaks = corr_df["peak"].unique()
         peak_mask = self.atac.var_names.isin(relevant_peaks)
         if peak_mask.sum() == 0:
@@ -929,18 +980,15 @@ class PeakAnalyser:
 
         logg.info(f"Found {peak_mask.sum()} relevant peaks in ATAC modality")
 
-        # Get accessibility matrix for relevant peaks
         X_atac = self.atac[:, peak_mask].X
         if hasattr(X_atac, "toarray"):
             X_atac = X_atac.toarray()
 
         peak_names = self.atac.var_names[peak_mask]
 
-        # Step 1: TF-IDF normalization
         logg.info("Applying TF-IDF normalization...")
         X_tfidf = self._tfidf_normalize(X_atac)
 
-        # Step 2: MAGIC imputation
         if use_magic:
             logg.info("Applying MAGIC imputation...")
             X_imputed = self._magic_impute(X_tfidf, **kwargs)
@@ -948,36 +996,35 @@ class PeakAnalyser:
             X_imputed = X_tfidf
             logg.info("Skipping MAGIC imputation (use_magic=False)")
 
-        # Step 3: Compute weighted scores
         logg.info("Computing weighted accessibility scores...")
         scores = np.zeros((self.atac.n_obs, len(gene_set)))
 
         for i, gene in enumerate(gene_set):
-            # Get peaks for this gene
             gene_corr = corr_df[corr_df["gene"] == gene]
             gene_peaks = gene_corr["peak"].values
             gene_cors = gene_corr["cor"].values
 
-            # Find indices in peak_names
             peak_indices = [np.where(peak_names == p)[0][0] for p in gene_peaks if p in peak_names]
             if len(peak_indices) == 0:
                 logg.warning(f"No peaks found for gene {gene}, score will be 0")
                 continue
 
-            # Get accessibility and correlations
-            a_ip = X_imputed[:, peak_indices]  # (n_cells, n_peaks_for_gene)
-            c_gp = gene_cors[: len(peak_indices)]  # Correlations
+            a_ip = X_imputed[:, peak_indices]
+            c_gp = gene_cors[: len(peak_indices)]
 
-            # Compute weighted score: sum(a_ip * c_gp) / sum(c_gp)
             numerator = (a_ip * c_gp).sum(axis=1)
             denominator = c_gp.sum()
             scores[:, i] = numerator / denominator if denominator > 0 else 0
 
-        # Store in RNA layers
-        score_df = pd.DataFrame(scores, index=rna.obs_names, columns=gene_set)
-        rna.layers[layer_name] = score_df.reindex(index=rna.obs_names, columns=rna.var_names, fill_value=0).values
+        if rna is not None:
+            score_df = pd.DataFrame(scores, index=rna.obs_names, columns=gene_set)
+            rna.layers[layer_name] = score_df.reindex(index=rna.obs_names, columns=rna.var_names, fill_value=0).values
+            logg.info(f"{score_type.capitalize()} scores stored in gdata['RNA'].layers['{layer_name}']")
+        else:
+            for i, gene in enumerate(gene_set):
+                self.atac.obs[f"{layer_name}_{gene}"] = scores[:, i]
+            logg.info(f"{score_type.capitalize()} scores stored in atac.obs as '{layer_name}_<gene>'")
 
-        logg.info(f"{score_type.capitalize()} scores stored in gdata['RNA'].layers['{layer_name}']")
         logg.info(f"Score range: [{scores.min():.3f}, {scores.max():.3f}]")
 
     def _tfidf_normalize(self, X: np.ndarray) -> np.ndarray:
