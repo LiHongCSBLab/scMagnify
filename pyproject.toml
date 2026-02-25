@@ -44,7 +44,7 @@ dependencies = [
   "pysam>=0.23.1",
   "pytabix",
   "rich>=10",
-  "scanpy>=1.9,<1.10.4",
+  "scanpy>=1.9,<1.10.3",
   "seacells>=0.3.3",
   "session-info",
   "tensorly",
