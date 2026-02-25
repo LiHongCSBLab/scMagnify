@@ -365,7 +365,20 @@ class PeakAnalyser:
             counts = adata_subset.X
             if hasattr(counts, "toarray"):
                 counts = counts.toarray()
-            counts_df = pd.DataFrame(counts.T, index=adata_subset.var_names, columns=adata_subset.obs_names).astype(int)
+
+            if counts.ndim == 1:
+                counts = counts.reshape(1, -1)
+            elif counts.shape[0] == adata_subset.n_vars and counts.shape[1] == adata_subset.n_obs:
+                pass
+            elif counts.shape[0] == adata_subset.n_obs and counts.shape[1] == adata_subset.n_vars:
+                counts = counts.T
+            else:
+                logg.warning(
+                    f"Unexpected count matrix shape {counts.shape}, expected ({adata_subset.n_obs}, {adata_subset.n_vars})"
+                )
+                counts = counts.reshape(adata_subset.n_obs, adata_subset.n_vars)
+
+            counts_df = pd.DataFrame(counts, index=adata_subset.var_names, columns=adata_subset.obs_names).astype(int)
 
             metadata = pd.DataFrame({groupby: adata_subset.obs[groupby].values}, index=adata_subset.obs_names)
 
