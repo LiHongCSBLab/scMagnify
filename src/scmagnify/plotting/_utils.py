@@ -1448,7 +1448,9 @@ def set_colors_for_categorical_obs(adata: AnnData, value_to_plot: str, palette: 
 
             if valid:
                 cc = palette()
-                colors_list = [np.to_hex(next(cc)["color"]) for x in range(length)]
+                from matplotlib.colors import to_hex
+
+                colors_list = [to_hex(next(cc)["color"]) for x in range(length)]
         if valid:
             adata.uns[f"{value_to_plot}_colors"] = colors_list
     else:

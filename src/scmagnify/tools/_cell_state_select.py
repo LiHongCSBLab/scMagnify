@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -18,7 +19,107 @@ if TYPE_CHECKING:
     from anndata import AnnData
     from mudata import MuData
 
-__all__ = ["lineage_classifer", "select_paga_path"]
+__all__ = ["lineage_classifer", "lineage_mask_from_dict", "select_paga_path"]
+
+
+@d.dedent
+def lineage_mask_from_dict(
+    data: AnnData | MuData,
+    lineage_dict: Mapping[str, Sequence[str]],
+    modal: str = "RNA",
+    celltype_key: str = "celltype",
+    key_added: str = "cell_state_masks",
+    strict: bool = False,
+    save_tmp: bool = False,
+):
+    """
+    Build boolean lineage masks from an explicit mapping of lineage names to cell types.
+
+    Each column in ``adata.obsm[key_added]`` is ``True`` for cells whose
+    ``celltype_key`` label appears in that lineage's cell-type list. The same
+    cell type may belong to multiple lineages.
+
+    Parameters
+    ----------
+    %(data)s
+    lineage_dict
+        Mapping ``{lineage_name: [celltype, ...]}``.
+    %(modal)s
+    celltype_key
+        Column in ``adata.obs`` used to match ``lineage_dict`` values.
+    key_added
+        ``obsm`` key for the boolean mask :class:`~pandas.DataFrame`.
+    strict
+        If True, raise when any cell type in ``lineage_dict`` is absent from
+        ``adata.obs[celltype_key]`` categories / unique values.
+    save_tmp
+        If True, write ``obsm[key_added]`` to CSV under ``settings.tmpfiles_dir``.
+
+    Returns
+    -------
+    AnnData | MuData
+        Object with ``.obsm[key_added]`` added or replaced for the chosen modal.
+    """
+    adata = _get_data_modal(data, modal)
+
+    if celltype_key not in adata.obs:
+        raise KeyError(f"The {celltype_key} is not found in adata.obs.")
+
+    if not lineage_dict:
+        raise ValueError("lineage_dict must be non-empty.")
+
+    ct = adata.obs[celltype_key]
+    if isinstance(ct.dtype, pd.CategoricalDtype):
+        valid = set(ct.cat.categories.astype(str))
+    else:
+        valid = set(ct.astype(str).unique())
+
+    cols = []
+    mask_cols = []
+    for lineage_name, types in lineage_dict.items():
+        if not isinstance(lineage_name, str):
+            raise TypeError(f"Lineage keys must be str, got {type(lineage_name)!r}.")
+        if not isinstance(types, Sequence) or isinstance(types, str | bytes):
+            raise TypeError(
+                f"lineage_dict[{lineage_name!r}] must be a sequence of cell type strings, " f"got {type(types)!r}."
+            )
+        type_list = list(types)
+        unknown = [t for t in type_list if str(t) not in valid]
+        if unknown and strict:
+            raise ValueError(
+                f"Lineage {lineage_name!r} references unknown {celltype_key} values: {unknown}. "
+                f"Valid labels include {sorted(valid)}."
+            )
+        cols.append(lineage_name)
+        in_lineage = ct.astype(str).isin([str(t) for t in type_list]).to_numpy()
+        mask_cols.append(in_lineage)
+
+    masks = np.column_stack(mask_cols) if mask_cols else np.zeros((len(adata), 0), dtype=bool)
+    adata.obsm[key_added] = pd.DataFrame(masks, columns=cols, index=adata.obs_names)
+    logg.info(f".obsm['{key_added}'] --> added ({len(cols)} lineages)")
+
+    console = Console()
+    table = Table(title="Lineage mask statistics (from dict)")
+    table.add_column("Lineage", justify="center", style="cyan", no_wrap=True)
+    table.add_column("Number", justify="center", style="magenta", no_wrap=True)
+    table.add_column("Percentage", justify="center", style="green", no_wrap=True)
+
+    n = len(adata)
+    for i, name in enumerate(cols):
+        n_cells = int(np.sum(masks[:, i]))
+        table.add_row(name, str(n_cells), f"{n_cells / n * 100:.2f}%" if n else "0.00%")
+    console.print(table)
+
+    if save_tmp:
+        tmpfiles_dir = settings.tmpfiles_dir
+        adata.obsm[key_added].to_csv(os.path.join(tmpfiles_dir, f"{key_added}.csv"), index=True)
+        logg.info(f"Saved masks in {tmpfiles_dir}/{key_added}.csv")
+
+    if isinstance(data, MuData):
+        data[modal].adata = adata
+        return data
+
+    return data
 
 
 @d.dedent
@@ -29,6 +130,9 @@ def lineage_classifer(
     fate_prob_key: str = "cellrank_fate_probabilities",
     q: float = 1e-2,
     eps: float = 1e-2,
+    celltype_key: str = "celltype",
+    min_cells_per_type: int = 10,
+    filter_small_celltypes: bool = True,
     key_added: str = "cell_state_masks",
     save_tmp: bool = True,
 ):
@@ -46,6 +150,13 @@ def lineage_classifer(
         Quantile to set dynamic thresholds (0–1). Default 1e-2.
     eps
         Small constant subtracted from the threshold. Default 1e-2.
+    celltype_key
+        Key in adata.obs that stores cell type annotations. Default "celltype".
+    min_cells_per_type
+        Minimum number of cells per cell type within each lineage. Cell types with
+        fewer cells than this threshold are removed from that lineage. Default 10.
+    filter_small_celltypes
+        Whether to apply lineage-wise low-count cell type filtering. Default True.
     key_added
         Key under which boolean masks are stored in adata.obsm.
     save_tmp
@@ -84,6 +195,26 @@ def lineage_classifer(
 
     masks = np.empty_like(fate_probs).astype(bool)
     masks[idx, :] = prob_thresholds - eps < sorted_fate_probs
+
+    if filter_small_celltypes:
+        if celltype_key not in adata.obs:
+            raise KeyError(f"The {celltype_key} is not found in adata.obs.")
+        if min_cells_per_type < 1:
+            raise ValueError("min_cells_per_type must be >= 1.")
+
+        celltypes = adata.obs[celltype_key]
+        for i in range(masks.shape[1]):
+            lineage_mask = masks[:, i]
+            if not np.any(lineage_mask):
+                continue
+
+            lineage_celltypes = celltypes[lineage_mask]
+            low_count_types = lineage_celltypes.value_counts().loc[lambda x: x < min_cells_per_type].index
+            if len(low_count_types) == 0:
+                continue
+
+            drop_mask = lineage_mask & celltypes.isin(low_count_types).to_numpy()
+            masks[drop_mask, i] = False
 
     adata.obsm[key_added] = pd.DataFrame(masks, columns=fate_names, index=adata.obs_names)
     logg.info(f".obsm['{key_added}'] --> added")
