@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import contextlib
+import io
 import warnings
 from typing import TYPE_CHECKING
 
@@ -29,7 +31,7 @@ warnings.simplefilter("ignore", FutureWarning)
 __all__ = ["test_association"]
 
 
-def _test_assoc(data: list[dict[str, Any]], n_splines: int = 5) -> list[float]:
+def _test_assoc(data: list[dict[str, Any]], n_splines: int = 5) -> list[float | bool]:
     """Feature selection test
 
     Parameters
@@ -42,8 +44,8 @@ def _test_assoc(data: list[dict[str, Any]], n_splines: int = 5) -> list[float]:
 
     Returns
     -------
-    List[float]
-        p-value and amplitude of the fitted GAM model
+    List[float | bool]
+        p-value, amplitude, and convergence status of the fitted GAM model.
     """
     import warnings
 
@@ -57,11 +59,19 @@ def _test_assoc(data: list[dict[str, Any]], n_splines: int = 5) -> list[float]:
     t = data[0]["t"]
     exp = data[1]
 
-    gam = GAM(s(0, n_splines=n_splines)).fit(t, exp)
+    max_iter = data[0].get("max_iter", 100)
+    tol = data[0].get("tol", 1e-4)
+
+    fit_stdout = io.StringIO()
+    fit_stderr = io.StringIO()
+    with contextlib.redirect_stdout(fit_stdout), contextlib.redirect_stderr(fit_stderr):
+        gam = GAM(s(0, n_splines=n_splines), max_iter=max_iter, tol=tol).fit(t, exp)
+    fit_msg = (fit_stdout.getvalue() + fit_stderr.getvalue()).lower()
     gam_res = {"d": gam.logs_["deviance"][-1], "df": gam.statistics_["deviance"], "p": gam.predict(t)}
 
     odf = gam_res["df"] - 1
-    gam0 = GAM().fit(np.ones(t.shape[0]), exp)
+    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+        gam0 = GAM(max_iter=max_iter, tol=tol).fit(np.ones(t.shape[0]), exp)
 
     if gam_res["d"] == 0:
         fstat = 0
@@ -75,8 +85,11 @@ def _test_assoc(data: list[dict[str, Any]], n_splines: int = 5) -> list[float]:
     pval = f.sf(fstat, df_res_odf, odf)  # f.sf is the survival function (1-CDF)
     pr = gam_res["p"]
     A = max(pr) - min(pr)
+    converged = bool(gam.statistics_.get("converged", "did not converge" not in fit_msg))
+    if "did not converge" in fit_msg:
+        converged = False
 
-    return [pval, A]
+    return [pval, A, converged]
 
 
 @d.dedent
@@ -86,6 +99,8 @@ def test_association(
     layer: str | None = "log1p_norm",
     time_key: str = "palantir_pseudotime",
     n_splines: int = 5,
+    max_iter: int = 100,
+    tol: float = 1e-4,
     fdr_cutoff: float = 1e-3,
     A_cutoff: float = 0.5,
     n_jobs: int = 10,
@@ -101,6 +116,10 @@ def test_association(
     %(layer)s
     %(time_key)s
     %(n_splines)s
+    max_iter
+        Maximum number of iterations used by pygam fitting. Default is 100.
+    tol
+        Tolerance for pygam convergence. Default is 1e-4.
     fdr_cutoff
         False discovery rate cutoff. Default is 1e-3.
     A_cutoff
@@ -135,6 +154,9 @@ def test_association(
         logg.info(
             f"Testing association between [bright_cyan]{layer}[/bright_cyan] gene expression and [bright_cyan]{time_key}[/bright_cyan]..."
         )
+        payload = [{"t": x[0]["t"], "max_iter": max_iter, "tol": tol} for x in X_t]
+        X_t = list(zip(payload, Xgenes, strict=False))
+
         stat = ProgressParallel(
             use_nested=True,
             total=len(X_t),
@@ -142,7 +164,9 @@ def test_association(
             n_jobs=n_jobs,
         )(delayed(_test_assoc)(X_t[d], n_splines) for d in range(len(X_t)))
 
-        stat = pd.DataFrame(stat, index=adata.var_names, columns=["p_val", "A"])
+        stat = pd.DataFrame(stat, index=adata.var_names, columns=["p_val", "A", "converged"])
+        stat["converged"] = stat["converged"].astype(bool)
+        stat["not_converged"] = ~stat["converged"]
         stat["fdr"] = multipletests(stat.p_val, method="bonferroni")[1]
         stat = stat.sort_values("A", ascending=False)
 
@@ -153,11 +177,20 @@ def test_association(
         adata.uns["test_assoc"] = {
             "time_key": time_key,
             "n_splines": n_splines,
+            "max_iter": max_iter,
+            "tol": tol,
             "fdr_cutoff": fdr_cutoff,
             "A_cutoff": A_cutoff,
+            "n_not_converged": int(stat["not_converged"].sum()),
         }
 
         logg.info(".varm['test_assoc_res'] --> added \n.uns['test_assoc'] --> added")
+
+    # Backward compatibility: existing cached results may not have convergence column.
+    if "converged" not in stat.columns:
+        stat["converged"] = True
+    if "not_converged" not in stat.columns:
+        stat["not_converged"] = ~stat["converged"].astype(bool)
 
     # Update significant genes based on current cutoffs
     adata.var["significant_genes"] = (stat.fdr < fdr_cutoff) & (stat.A > A_cutoff)
@@ -170,6 +203,10 @@ def test_association(
 
     table.add_row("Total Genes", f"{adata.n_vars:,}")
     table.add_row("Thresholds", f"FDR < {fdr_cutoff}, A > {A_cutoff}")
+    table.add_row(
+        "Not converged genes (n, %)",
+        f"{int(stat['not_converged'].sum()):,} ({float(stat['not_converged'].mean()) * 100:.2f}%)",
+    )
     table.add_row(
         "Significant genes (n, %)",
         f"{sum(adata.var['significant_genes']):,} ({sum(adata.var['significant_genes']) / adata.n_vars * 100:.2f}%)",

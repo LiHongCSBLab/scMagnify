@@ -8,7 +8,7 @@ from ._barplot import *
 # ------------------
 # Advanced plotting
 # ------------------
-from ._cell_state_select import cell_state_select
+from ._cell_state_select import cell_state_select, plot_lineage_masks_embeddings, plot_lineage_masks_paga
 from ._circosplot import *
 from ._distplot import *
 from ._dumbbellplot import *
