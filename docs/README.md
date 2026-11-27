@@ -3,8 +3,8 @@
 [![Tests][badge-tests]][tests]
 [![Documentation][badge-docs]][documentation]
 
-[badge-tests]: https://img.shields.io/github/actions/workflow/status/xfchen0912/scMagnify/test.yaml?branch=main
-[badge-docs]: https://img.shields.io/readthedocs/scMagnify
+[badge-tests]: https://img.shields.io/github/actions/workflow/status/LiHongCSBLab/scMagnify/test.yaml?branch=main
+[badge-docs]: https://img.shields.io/readthedocs/scmagnify
 
 scMagnify is a computational framework to infer GRNs and explore dynamic regulation synergy from single-cell multiome data.
 
@@ -91,7 +91,7 @@ mamba create -n=scm conda-forge::scmagnify
 3. Install the latest development version:
 
 ```bash
-uv pip install git+https://github.com/xfchen0912/scMagnify.git@main
+uv pip install git+https://github.com/LiHongCSBLab/scMagnify.git@main
 ```
 
 ## 🏷️Release notes
@@ -105,13 +105,28 @@ If you found a bug, please use the [issue tracker][].
 
 ## 📓Citation
 
-> t.b.a
+If you use `scMagnify` in your work, please cite:
+
+> Chen, X., Yan, X., Shen, B., Wang, H., Tang, Z., Zang, Y., Lin, P., Zhang, H., Li, Y., & Li, H. (2026). Decomposing multi-scale dynamic regulation from single-cell multiomics with scMagnify. *Nature Communications*, 17. https://doi.org/10.1038/s41467-026-78441-9
+
+```bibtex
+@article{Chen_2026,
+  title = {Decomposing multi-scale dynamic regulation from single-cell multiomics with scMagnify},
+  author = {Chen, Xufeng and Yan, Xi and Shen, Bihan and Wang, Heqi and Tang, Zhixuan and Zang, Yan and Lin, Ping and Zhang, Haibing and Li, Yu and Li, Hong},
+  journal = {Nature Communications},
+  volume = {17},
+  year = {2026},
+  month = oct,
+  doi = {10.1038/s41467-026-78441-9},
+  url = {https://www.nature.com/articles/s41467-026-78441-9}
+}
+```
 
 [mambaforge]: https://github.com/conda-forge/miniforge#mambaforge
 [scverse discourse]: https://discourse.scverse.org/
-[issue tracker]: https://github.com/xfchen0912/scMagnify/issues
-[tests]: https://github.com/xfchen0912/scMagnify/actions/workflows/test.yml
-[documentation]: https://scMagnify.readthedocs.io
-[changelog]: https://scMagnify.readthedocs.io/en/latest/changelog.html
-[api documentation]: https://scMagnify.readthedocs.io/en/latest/api.html
-[pypi]: https://pypi.org/project/scMagnify
+[issue tracker]: https://github.com/LiHongCSBLab/scMagnify/issues
+[tests]: https://github.com/LiHongCSBLab/scMagnify/actions/workflows/test.yaml
+[documentation]: https://scmagnify.readthedocs.io
+[changelog]: https://scmagnify.readthedocs.io/en/latest/changelog.html
+[api documentation]: https://scmagnify.readthedocs.io/en/latest/api/index.html
+[pypi]: https://pypi.org/project/scmagnify/

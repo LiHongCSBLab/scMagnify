@@ -16,11 +16,14 @@ authors = [
 ]
 requires-python = ">=3.10"
 classifiers = [
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: BSD License",
   "Programming Language :: Python :: 3 :: Only",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
+  "Topic :: Scientific/Engineering :: Bio-Informatics",
 ]
 dependencies = [
   "anndata<=0.10",
@@ -87,9 +90,11 @@ optional-dependencies.test = [
 ]
 
 # https://docs.pypi.org/project_metadata/#project-urls
-urls.Documentation = "https://scMagnify.readthedocs.io/"
-urls.Homepage = "https://github.com/xfchen0912/scMagnify"
-urls.Source = "https://github.com/xfchen0912/scMagnify"
+urls.Bug-Tracker = "https://github.com/LiHongCSBLab/scMagnify/issues"
+urls.Changelog = "https://github.com/LiHongCSBLab/scMagnify/blob/main/CHANGELOG.md"
+urls.Documentation = "https://scmagnify.readthedocs.io/"
+urls.Homepage = "https://github.com/LiHongCSBLab/scMagnify"
+urls.Source = "https://github.com/LiHongCSBLab/scMagnify"
 
 [tool.hatch.envs.default]
 installer = "uv"

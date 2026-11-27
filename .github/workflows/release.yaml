@@ -23,7 +23,23 @@ jobs:
         with:
           python-version: "3.x"
           cache: "pip"
-      - run: pip install build
-      - run: python -m build
+      - name: Verify release tag matches pyproject.toml version
+        env:
+          TAG_NAME: ${{ github.event.release.tag_name }}
+        run: |
+          python -c "
+          import os, tomllib
+          with open('pyproject.toml', 'rb') as f:
+              pkg_version = tomllib.load(f)['project']['version']
+          tag = os.environ['TAG_NAME'].lstrip('v')
+          assert tag == pkg_version, f'Tag version ({tag}) != pyproject.toml version ({pkg_version})'
+          print(f'Verified release tag matches package version: {pkg_version}')
+          "
+      - name: Install build and check tools
+        run: pip install build twine
+      - name: Build package
+        run: python -m build
+      - name: Check package distributions
+        run: twine check --strict dist/*
       - name: Publish package distributions to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1

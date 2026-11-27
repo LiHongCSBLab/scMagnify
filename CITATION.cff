@@ -1,0 +1,42 @@
+cff-version: 1.2.0
+title: "scMagnify: Multi-scale Gene Regulatory Network Inference and Analysis"
+message: "If you use scMagnify in your research, please cite the following publication."
+type: software
+authors:
+  - family-names: Chen
+    given-names: Xufeng
+    email: chenxufeng2022@sinh.ac.cn
+repository-code: "https://github.com/LiHongCSBLab/scMagnify"
+url: "https://scmagnify.readthedocs.io/"
+license: BSD-3-Clause
+version: "0.1.1"
+preferred-citation:
+  type: article
+  title: "Decomposing multi-scale dynamic regulation from single-cell multiomics with scMagnify"
+  authors:
+    - family-names: Chen
+      given-names: Xufeng
+    - family-names: Yan
+      given-names: Xi
+    - family-names: Shen
+      given-names: Bihan
+    - family-names: Wang
+      given-names: Heqi
+    - family-names: Tang
+      given-names: Zhixuan
+    - family-names: Zang
+      given-names: Yan
+    - family-names: Lin
+      given-names: Ping
+    - family-names: Zhang
+      given-names: Haibing
+    - family-names: Li
+      given-names: Yu
+    - family-names: Li
+      given-names: Hong
+  journal: "Nature Communications"
+  volume: 17
+  year: 2026
+  month: 10
+  doi: "10.1038/s41467-026-78441-9"
+  url: "https://www.nature.com/articles/s41467-026-78441-9"

@@ -52,4 +52,4 @@ The scMagnify framework includes a suite of integrated downstream analyses built
 * **Regulatory Activity Inference:** The activity of individual TFs or entire RegFactors is quantified from the collective expression of their target regulons (defined by $G_{activation}$ or $U^{(TG)}$) using a multivariate linear model (MLM).
 * **Intercellular Communication:** scMagnify models signaling-to-transcription cascades by correlating the expression of receptors with the expression (or inferred activity) of their downstream TFs along the pseudotime axis. The significance of these interactions is validated using a permutation test to reveal how extracellular cues are translated into intracellular regulatory programs.
 
-See "Decomposing multi-scale dynamic regulation from single-cell multiomics with scMagnify" for a detailed description of the methods and applications on different biological systems.
+See [Decomposing multi-scale dynamic regulation from single-cell multiomics with scMagnify](https://www.nature.com/articles/s41467-026-78441-9) {cite:p}`Chen_2026` for a detailed description of the methods and applications on different biological systems.
