@@ -19,9 +19,13 @@ __pycache__/
 # Tests and coverage
 /data/
 /node_modules/
+.coverage
+coverage.xml
 
 # docs
 /docs/generated/
+/docs/api/generated/
+/docs/api/api/
 /docs/_build/
 
 # Vibe code assistant
