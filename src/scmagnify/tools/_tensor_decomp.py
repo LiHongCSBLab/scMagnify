@@ -266,7 +266,7 @@ class RegDecomp:
         # Update the results to the object
         factor1, factor2, factor3 = factors
 
-        index1 = [f"{self.modes[0]}_{i}" for i in range(rank[0])]
+        index1 = [f"{self.modes[0]}_{i}" for i in range(tensor.shape[0])]
         index2 = self.data.uns[self.net_key].TF.unique()
         index3 = self.data.uns[self.net_key].Target.unique()
 

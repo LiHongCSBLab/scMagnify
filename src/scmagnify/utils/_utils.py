@@ -382,7 +382,7 @@ def _edge_to_matrix(
     -------
     matrix DataFrame
     """
-    matrix = pd.DataFrame(0, index=rownames, columns=colnames)
+    matrix = pd.DataFrame(0.0, index=rownames, columns=colnames, dtype=float)
     for _, row in edge.iterrows():
         matrix.loc[row["TF"], row["Target"]] = row["score"]
 

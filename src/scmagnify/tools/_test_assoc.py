@@ -26,8 +26,6 @@ if TYPE_CHECKING:
 
     from scmagnify import GRNMuData
 
-warnings.simplefilter("ignore", FutureWarning)
-
 __all__ = ["test_association"]
 
 
@@ -47,14 +45,7 @@ def _test_assoc(data: list[dict[str, Any]], n_splines: int = 5) -> list[float | 
     List[float | bool]
         p-value, amplitude, and convergence status of the fitted GAM model.
     """
-    import warnings
-
     from numba.core.errors import NumbaDeprecationWarning
-
-    warnings.simplefilter("ignore", category=NumbaDeprecationWarning)
-    warnings.simplefilter("ignore", FutureWarning)
-    warnings.simplefilter("ignore", UserWarning)
-    warnings.simplefilter("ignore", RuntimeWarning)
 
     t = data[0]["t"]
     exp = data[1]
@@ -64,14 +55,19 @@ def _test_assoc(data: list[dict[str, Any]], n_splines: int = 5) -> list[float | 
 
     fit_stdout = io.StringIO()
     fit_stderr = io.StringIO()
-    with contextlib.redirect_stdout(fit_stdout), contextlib.redirect_stderr(fit_stderr):
-        gam = GAM(s(0, n_splines=n_splines), max_iter=max_iter, tol=tol).fit(t, exp)
-    fit_msg = (fit_stdout.getvalue() + fit_stderr.getvalue()).lower()
-    gam_res = {"d": gam.logs_["deviance"][-1], "df": gam.statistics_["deviance"], "p": gam.predict(t)}
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=NumbaDeprecationWarning)
+        warnings.simplefilter("ignore", FutureWarning)
+        warnings.simplefilter("ignore", UserWarning)
+        warnings.simplefilter("ignore", RuntimeWarning)
+        with contextlib.redirect_stdout(fit_stdout), contextlib.redirect_stderr(fit_stderr):
+            gam = GAM(s(0, n_splines=n_splines), max_iter=max_iter, tol=tol).fit(t, exp)
+        fit_msg = (fit_stdout.getvalue() + fit_stderr.getvalue()).lower()
+        gam_res = {"d": gam.logs_["deviance"][-1], "df": gam.statistics_["deviance"], "p": gam.predict(t)}
 
-    odf = gam_res["df"] - 1
-    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-        gam0 = GAM(max_iter=max_iter, tol=tol).fit(np.ones(t.shape[0]), exp)
+        odf = gam_res["df"] - 1
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            gam0 = GAM(max_iter=max_iter, tol=tol).fit(np.ones(t.shape[0]), exp)
 
     if gam_res["d"] == 0:
         fstat = 0

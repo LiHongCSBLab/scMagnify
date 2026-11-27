@@ -133,10 +133,11 @@ def fetch_scm_data():
         try:
             shutil.rmtree(fname + ".unzip")
             logg.info(f"Cleaned up temporary directory: {fname + '.unzip'}")
-            shutil.rmtree(fname)
-            logg.info(f"Removed temporary zip file: {fname}")
+            if os.path.isfile(fname):
+                os.remove(fname)
+                logg.info(f"Removed temporary zip file: {fname}")
         except OSError as e:
-            logg.info(f"Could not clean up temporary directory {fname + '.unzip'}: {e}")
+            logg.info(f"Could not clean up temporary files for {fname}: {e}")
 
         return dest_path
 
@@ -171,14 +172,23 @@ def fetch_scm_data():
 
 def human_tcelldep_bm():
     """Get the path to the human_tcelldep-bm dataset."""
-    pass
+    raise NotImplementedError(
+        "Dataset loader 'human_tcelldep_bm' is not yet implemented. "
+        "Please use `scmagnify.fetch_scm_data()` to download the tutorial datasets."
+    )
 
 
 def human_aki_ckd():
     """Get the path to the human_aki-ckd dataset."""
-    pass
+    raise NotImplementedError(
+        "Dataset loader 'human_aki_ckd' is not yet implemented. "
+        "Please use `scmagnify.fetch_scm_data()` to download the tutorial datasets."
+    )
 
 
 def mouse_pancreas():
     """Get the path to the mouse_pancreas dataset."""
-    pass
+    raise NotImplementedError(
+        "Dataset loader 'mouse_pancreas' is not yet implemented. "
+        "Please use `scmagnify.fetch_scm_data()` to download the tutorial datasets."
+    )

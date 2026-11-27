@@ -26,4 +26,4 @@ jobs:
       - name: Build package
         run: python -m build
       - name: Check package
-        run: twine check --strict dist/*.whl
+        run: twine check --strict dist/*
