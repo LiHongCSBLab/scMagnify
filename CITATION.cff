@@ -9,7 +9,7 @@ authors:
 repository-code: "https://github.com/LiHongCSBLab/scMagnify"
 url: "https://scmagnify.readthedocs.io/"
 license: BSD-3-Clause
-version: "0.1.1"
+version: "0.2.0"
 preferred-citation:
   type: article
   title: "Decomposing multi-scale dynamic regulation from single-cell multiomics with scMagnify"
