@@ -1,130 +1,179 @@
 from __future__ import annotations
 
-import warnings
+import copy
+import os
 from typing import TYPE_CHECKING
 
 import networkx as nx
 import pandas as pd
 from anndata import AnnData
 from mudata import MuData, read_h5mu, write_h5mu
-from scipy.sparse import csr_matrix
+from scipy.sparse import csr_matrix, issparse
 
 from scmagnify import logging as logg
 from scmagnify.utils import _edge_to_matrix, filter_network
 
-warnings.simplefilter("ignore", FutureWarning)
-warnings.simplefilter("ignore", UserWarning)
-warnings.simplefilter("ignore", RuntimeWarning)
-
 if TYPE_CHECKING:
-    pass
+    from collections.abc import Sequence
 
 __all__ = ["GRNMuData", "read"]
 
 
 class GRNMuData(MuData):
-    """
-    GRNMuData class extends the MuData class to include a Gene Regulatory Network (GRN) and associated TF activity data.
+    """MuData subclass storing a Gene Regulatory Network (GRN) and TF activity modality.
 
     Parameters
     ----------
     data
-        An AnnData or MuData object containing the primary data.
+        An :class:`~anndata.AnnData` or :class:`~mudata.MuData` object containing
+        the primary single-cell data.
     tf_act
-        A DataFrame or AnnData object containing transcription factor activity data.
+        A :class:`~pandas.DataFrame` or :class:`~anndata.AnnData` containing
+        transcription factor activity scores (cells x TFs).
     network
-        A DataFrame representing the gene regulatory network with columns for TFs, targets, and scores.
-
+        A :class:`~pandas.DataFrame` representing the gene regulatory network
+        with columns ``TF``, ``Target``, and score/lag attributes.
     """
 
     def __init__(self, data: AnnData | MuData, tf_act: pd.DataFrame | AnnData, network: pd.DataFrame):
-        # Determine if the input is AnnData or MuData
+        if isinstance(tf_act, AnnData):
+            grn_adata = tf_act.copy()
+        else:
+            grn_adata = AnnData(tf_act)
+
+        if grn_adata.X is not None and not issparse(grn_adata.X):
+            grn_adata.X = csr_matrix(grn_adata.X)
+
         if isinstance(data, AnnData):
-            # If AnnData, create a new MuData object
-            tf_act = AnnData(tf_act)
-            tf_act.X = csr_matrix(tf_act.X)
-            _constructor = {"RNA": data, "GRN": tf_act}
-            super().__init__(_constructor)
+            modalities = {"RNA": data, "GRN": grn_adata}
+            super().__init__(modalities)
         elif isinstance(data, MuData):
-            # If MuData, extract existing modalities and add GRN
-            modalities = {mod: data.mod[mod] for mod in data.mod}  # Extract existing modalities
-            tf_act = AnnData(tf_act)
-            tf_act.X = csr_matrix(tf_act.X)
-            modalities["GRN"] = tf_act  # Add GRN modality
-            super().__init__(modalities)  # Initialize with the updated modalities
+            modalities = {mod: data.mod[mod] for mod in data.mod}
+            modalities["GRN"] = grn_adata
+            super().__init__(modalities)
         else:
             raise TypeError("Data must be either AnnData or MuData.")
 
-        # Add network to uns
-        self.uns = data.uns
-        self.uns["network"] = network
+        self.uns = dict(data.uns)
+        self.uns["network"] = network.copy() if isinstance(network, pd.DataFrame) else network
 
-    def __repr__(self):
-        text = f"Gene Regulatory Network (GRN) with {self.uns['network'].shape[0]} edges.\n"
+    def __repr__(self) -> str:
+        network = self.uns.get("network")
+        n_edges = network.shape[0] if isinstance(network, pd.DataFrame) else 0
+        text = f"Gene Regulatory Network (GRN) with {n_edges} edges.\n"
         text += super().__repr__()
-
-        # text = Text(text)
-        # text.stylize("bold underline", 0, 26)
         return text
 
-    def __class__(self):
-        return "GRNMuData"
+    def copy(self) -> GRNMuData:
+        """Return a deep copy of the :class:`GRNMuData` object."""
+        base = MuData({mod: adata.copy() for mod, adata in self.mod.items()})
+        base.uns = copy.deepcopy(dict(self.uns))
+        if "GRN" in base.mod and "network" in base.uns:
+            return GRNMuData(base, base.mod["GRN"], base.uns["network"])
+        return base
 
-    def write(self, filename: str):
-        """Write the GRNMuData object to a file."""
-        write_h5mu(filename, self)
+    def write(self, filename: str | os.PathLike) -> None:
+        """Write the :class:`GRNMuData` object to an ``.h5mu`` file.
 
-    def to_nx(self, network_key="network", score_key="score") -> nx.DiGraph:
+        Parameters
+        ----------
+        filename
+            Destination file path.
         """
-        Convert the GRN to a networkx DiGraph object.
+        write_h5mu(str(filename), self)
+
+    def to_nx(self, network_key: str | None = None, score_key: str = "score") -> nx.DiGraph:
+        """Convert the stored GRN edge table to a :class:`networkx.DiGraph`.
+
+        Parameters
+        ----------
+        network_key
+            Key in ``self.uns`` containing the edge DataFrame. When ``None``,
+            uses ``"filtered_network"`` if present, otherwise falls back to
+            ``"network"``.
+        score_key
+            Column name used to keep positive-weight edges.
+
+        Returns
+        -------
+        networkx.DiGraph
+            Directed regulatory graph with edge attributes from the DataFrame.
         """
-        if network_key not in self.uns:
-            raise ValueError("Network not found in uns.")
+        if network_key is None:
+            if "filtered_network" in self.uns:
+                network_key = "filtered_network"
+            elif "network" in self.uns:
+                network_key = "network"
+                logg.info("'filtered_network' not found in uns; falling back to 'network'.")
+            else:
+                raise ValueError("Neither 'filtered_network' nor 'network' found in uns.")
+        elif network_key not in self.uns:
+            raise ValueError(f"Network '{network_key}' not found in uns.")
 
         df = self.uns[network_key]
-
-        df = df[df[score_key] > 0]
-        # Validate the DataFrame
         if df.shape[1] < 3:
             raise ValueError("Invalid DataFrame: must have at least three columns.")
 
-        # Copy the DataFrame to avoid modifying the original
-        edges = df.copy()
-
-        # Create a directed graph
+        edges = df[df[score_key] > 0].copy()
         G = nx.DiGraph()
-
         for _, row in edges.iterrows():
             regulator = row["TF"]
             target = row["Target"]
-            attributes = {key: row[key] for key in row.index if key not in ["TF", "Target"]}
+            attributes = {key: row[key] for key in row.index if key not in ("TF", "Target")}
             G.add_edge(regulator, target, **attributes)
 
         return G
 
-    def to_cyto(self) -> str:
-        """
-        Convert the GRN to a Cytoscape JSON object.
-        """
-        network = self.uns["network"]
-        return network.to_json(orient="records")
+    def to_cyto(self, network_key: str = "network") -> str:
+        """Serialize the GRN edge table to a Cytoscape-compatible JSON string.
 
-    def to_matrix(self, network_key="network", score_key="score", rownames=None, colnames=None) -> pd.DataFrame:
+        Parameters
+        ----------
+        network_key
+            Key in ``self.uns`` containing the edge DataFrame.
+
+        Returns
+        -------
+        str
+            JSON string formatted as a list of edge records.
         """
-        Convert the GRN edges to a matrix
+        if network_key not in self.uns:
+            raise ValueError(f"Network '{network_key}' not found in uns.")
+        return self.uns[network_key].to_json(orient="records")
+
+    def to_matrix(
+        self,
+        network_key: str = "network",
+        score_key: str = "score",
+        rownames: Sequence[str] | None = None,
+        colnames: Sequence[str] | None = None,
+    ) -> pd.DataFrame:
+        """Convert the GRN edge table into a TF-by-Target adjacency matrix.
+
+        Parameters
+        ----------
+        network_key
+            Key in ``self.uns`` containing the edge DataFrame.
+        score_key
+            Column name providing edge weights.
+        rownames
+            Optional explicit row (TF) order.
+        colnames
+            Optional explicit column (Target) order.
+
+        Returns
+        -------
+        pandas.DataFrame
+            Adjacency matrix indexed by TFs and columns by Targets.
         """
-        edge_df = self.uns[network_key][["TF", "Target", score_key]]
+        if network_key not in self.uns:
+            raise ValueError(f"Network '{network_key}' not found in uns.")
+
+        edge_df = self.uns[network_key][["TF", "Target", score_key]].copy()
         edge_df.columns = ["TF", "Target", "score"]
 
-        if rownames is None:
-            row_names = edge_df["TF"].unique()
-        else:
-            row_names = rownames
-
-        if colnames is None:
-            col_names = edge_df["Target"].unique()
-        else:
-            col_names = colnames
+        row_names = edge_df["TF"].unique() if rownames is None else rownames
+        col_names = edge_df["Target"].unique() if colnames is None else colnames
 
         matrix = _edge_to_matrix(
             edge_df,
@@ -133,26 +182,41 @@ class GRNMuData(MuData):
         )
 
         logg.info(f"Converted {network_key}:{score_key} to matrix with shape {matrix.shape}.")
-
         return matrix
 
-    def filter(self, **kwargs):
-        """
-        Filter the GRN based on the specified attribute.
+    def filter(self, **kwargs) -> GRNMuData:
+        """Filter the GRN and store the result in ``self.uns['filtered_network']``.
+
+        Parameters
+        ----------
+        **kwargs
+            Keyword arguments forwarded to :func:`scmagnify.utils.filter_network`.
+
+        Returns
+        -------
+        GRNMuData
+            The updated :class:`GRNMuData` instance.
         """
         network = self.uns["network"].copy()
-        filtered_network = filter_network(network, **kwargs)
-
-        # Update the network in uns
-        self.uns["filtered_network"] = filtered_network
+        self.uns["filtered_network"] = filter_network(network, **kwargs)
+        return self
 
 
-def read(filename: str) -> GRNMuData | MuData:
+def read(filename: str | os.PathLike) -> GRNMuData | MuData:
+    """Read a :class:`GRNMuData` (or :class:`~mudata.MuData`) object from ``.h5mu``.
+
+    Parameters
+    ----------
+    filename
+        Path to the ``.h5mu`` file.
+
+    Returns
+    -------
+    GRNMuData | mudata.MuData
+        A :class:`GRNMuData` instance if both ``GRN`` modality and ``uns['network']``
+        are present, otherwise a standard :class:`~mudata.MuData`.
     """
-    Read GRNMuData object from a file.
-    """
-    mdata = read_h5mu(filename)
+    mdata = read_h5mu(str(filename))
     if "GRN" in mdata.mod and "network" in mdata.uns:
         return GRNMuData(mdata, mdata.mod["GRN"], mdata.uns["network"])
-    else:
-        return mdata
+    return mdata
